@@ -70,8 +70,8 @@ sequenceDiagram
             DataAPI-->>-MobileApp: 成功レスポンス
             MobileApp-->>-User: 登録完了表示
         else 検証NG
-            DataAPI-->>-MobileApp: エラーレスポンス
-            MobileApp-->>-User: エラーメッセージ表示
+            DataAPI-->>MobileApp: エラーレスポンス
+            MobileApp-->>User: エラーメッセージ表示
         end
     end
 
@@ -152,7 +152,7 @@ sequenceDiagram
             TransformSys-->>-DataParseSys: 変換結果
             DataParseSys-->>-WebApp: 処理完了
         else 検証NG
-            DataParseSys-->>-WebApp: エラー詳細
+            DataParseSys-->>WebApp: エラー詳細
             WebApp-->>User: エラーレポート表示
         end
     end

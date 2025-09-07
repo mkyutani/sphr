@@ -87,7 +87,7 @@ sequenceDiagram
         Import-->>-Web: インポート成功
         Web-->>User: 成功通知（処理件数表示）
     else ファイル形式NG
-        Import-->>-Web: エラー情報
+        Import-->>Web: エラー情報
         Web-->>User: エラー通知（修正指示）
     end
 
@@ -203,7 +203,7 @@ sequenceDiagram
         Audit-->>-Web: ログ完了
         Web-->>User: ログイン成功・メイン画面
     else 認証失敗
-        Auth-->>-Web: 認証失敗
+        Auth-->>Web: 認証失敗
         Web->>+Audit: ログイン失敗ログ
         Audit-->>-Web: ログ完了
         Web-->>User: エラーメッセージ
@@ -221,7 +221,7 @@ sequenceDiagram
         Web->>Web: 業務処理実行
         Web-->>User: 処理結果
     else セッション無効
-        Session-->>-Web: 認証NG
+        Session-->>Web: 認証NG
         Web-->>User: ログイン画面リダイレクト
     end
 ```
