@@ -1,0 +1,47 @@
+{
+    "name": "Personal Healthcare Record Dev Container",
+    "dockerComposeFile": "docker-compose.yml",
+    "service": "app",
+    "workspaceFolder": "/workspace",
+
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "denoland.vscode-deno",
+                "dbaeumer.vscode-eslint",
+                "esbenp.prettier-vscode",
+                "ms-azuretools.vscode-docker",
+                "ckolkman.vscode-postgres",
+                "anthropic.claude-code"
+            ],
+            "settings": {
+                "deno.enable": true,
+                "deno.lint": true,
+                "deno.unstable": [],
+                "deno.path": "/usr/bin/deno",
+                "editor.formatOnSave": true,
+                "editor.defaultFormatter": "denoland.vscode-deno",
+                "[typescript]": {
+                    "editor.defaultFormatter": "denoland.vscode-deno"
+                },
+                "[typescriptreact]": {
+                    "editor.defaultFormatter": "denoland.vscode-deno"
+                }
+            }
+        }
+    },
+
+    "forwardPorts": [8000, 5432],
+    "portsAttributes": {
+        "8000": {
+            "label": "Application",
+            "onAutoForward": "notify"
+        },
+        "5432": {
+            "label": "PostgreSQL",
+            "onAutoForward": "silent"
+        }
+    },
+
+    "postCreateCommand": "deno --version"
+}
