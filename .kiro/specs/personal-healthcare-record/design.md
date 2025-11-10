@@ -2,207 +2,185 @@
 
 ## 概要
 
-本システムは、個人ヘルスケアレコード(PHR: Personal Healthcare Record)管理システムです。日々の健康情報を記録・蓄積・分析し、医療機関との情報共有を支援するWebアプリケーションを提供します。
+本設計書は、個人ヘルスケアレコード(SPHR: Simple Personal Healthcare Record)管理システムの技術設計を定義します。SPHRは、個人ユーザーが日々の健康情報(血圧、脈拍、体重等)を記録・蓄積・分析し、医療機関との情報共有を支援するWebアプリケーションです。
 
-**目的**: 既存のヘルスケアアプリの「過剰機能」と「機能不足」の間のギャップを埋める、シンプルで柔軟な個人健康記録管理ソリューションを実現します。ユーザーが日々の健康情報を継続的に記録し、長期的なデータ蓄積と傾向分析を可能にし、定期健診時にかかりつけ医へ効率的にデータを報告できます。
+**目的**: SPHRは、既存ヘルスケアアプリの「過剰機能」と「機能不足」のギャップを埋め、シンプルで柔軟な個人ヘルスケア記録管理を個人ユーザーに提供します。
 
-**ユーザー**: 健康意識の高い個人ユーザー(40〜70代想定)が、日常的な健康データ入力、データ分析、医療機関への情報提供のために利用します。システム管理者はデータ種類マスタの管理とシステム運用を担当します。
+**ユーザー**: システム利用者(個人ユーザー)は日常的な健康情報の登録・参照・分析、システム管理者はデータ種類マスタの管理、かかりつけ医は患者から提供されたデータの参照に利用します。
 
-**影響**: 完全な新規開発プロジェクトであり、既存システムへの影響はありません。Azure VM上にDocker Composeで構成されたDeno + Hono + React + PostgreSQLスタックを新規構築します。
+**影響**: 本システムは新規開発であり、既存システムへの影響はありません。
 
-### ゴール
+### 目標
 
-- ユーザーがスマホ・PCから1秒以内に健康情報を登録できる使いやすいUI/UXを提供する
-- 蓄積されたデータから統計値(最大・最小・平均)と折れ線グラフ・30日移動平均を3秒以内に表示する
-- PDF/CSV形式で医療機関へ提出可能なデータ出力機能を10秒以内に生成する
-- Basic認証とHTTPSによるセキュアな通信で個人の健康情報を保護する
-- 99.5%以上のシステム稼働率と月額100円/ユーザー以下の低コスト運用を実現する
+- **データ登録の利便性**: 平均データ登録時間30秒以内を実現し、ユーザーの継続利用を促進
+- **データ分析による気づき**: 統計値とグラフによる視覚的な傾向把握を提供し、健康改善のモチベーションを向上
+- **医療機関との連携**: PDF・CSV出力により、定期健診時の効率的なデータ報告を実現
+- **システム安定性**: 99.5%以上の稼働率、レスポンス時間1〜10秒以内を達成
 
-### 非ゴール
+### 非目標
 
-- 電子カルテシステムとのリアルタイム連携(将来検討)
-- ウェアラブルデバイスからの自動データ取込(初期フェーズ外)
-- 多言語対応(日本語のみ対応)
-- 複数ユーザー間でのデータ共有機能
-- AI/機械学習による健康予測機能
+- **外部システム連携**: 初期フェーズでは電子カルテシステムとの直接連携は実施しない(将来検討)
+- **リアルタイム同期**: スマートウォッチ等のウェアラブルデバイスからの自動データ取得は対象外
+- **多言語対応**: 初期フェーズは日本語のみ対応
 
 ---
 
 ## アーキテクチャ
 
-### 高レベルアーキテクチャ
+### アーキテクチャ概要
+
+SPHRは、モノリシックなWebアプリケーションとして設計されます。シンプルさと低コスト運用を重視し、単一サーバー上でバックエンドAPI、フロントエンドSPA、PostgreSQLデータベースを稼働させます。
 
 ```mermaid
 graph TB
-    subgraph "クライアント層"
-        Mobile[スマートフォン<br/>iOS/Android]
-        PC[PC<br/>Windows/Mac/Linux]
-    end
+    Client[クライアント<br/>スマホ・PC]
+    LB[HTTPS<br/>TLS 1.2+]
+    Auth[Basic認証<br/>Middleware]
 
     subgraph "Azure VM"
-        subgraph "Docker Compose環境"
-            subgraph "Webサーバー層"
-                Frontend[フロントエンド<br/>React SPA]
-                Backend[バックエンド<br/>Deno + Hono]
-            end
-
-            subgraph "データ層"
-                DB[(PostgreSQL<br/>データベース)]
-            end
-
-            Backend --> DB
+        subgraph "Appコンテナ"
+            Frontend[Frontend<br/>React 18+]
+            Backend[Backend API<br/>Deno + Hono]
         end
 
-        subgraph "ストレージ"
-            Backup[バックアップ<br/>Azureストレージ]
+        subgraph "DBコンテナ"
+            DB[(PostgreSQL 15+)]
         end
-
-        DB -.日次バックアップ.-> Backup
     end
 
-    Mobile -->|HTTPS<br/>Basic認証| Frontend
-    PC -->|HTTPS<br/>Basic認証| Frontend
-    Frontend -->|REST API| Backend
+    Client -->|HTTPS| LB
+    LB --> Auth
+    Auth --> Frontend
+    Auth --> Backend
+    Backend --> DB
+    Frontend -.API呼び出し.-> Backend
 ```
 
 **アーキテクチャ統合**:
-- **既存パターン保持**: 新規開発のため既存パターンなし
-- **新コンポーネント根拠**:
-  - React SPA: レスポンシブデザインとリッチなグラフ描画のためのモダンフロントエンド
-  - Hono: 軽量で高速なWebフレームワーク、Denoとの親和性が高い
-  - PostgreSQL: トランザクション管理とデータ整合性が必要な健康情報の永続化
-- **技術スタック整合性**: Deno + Hono + React + PostgreSQLの組み合わせはTypeScript統一環境を実現し、開発効率とメンテナンス性を向上させる
-- **ステアリング準拠**: 要件定義書(RDDD0301)の技術スタック要求(REQ-18)に準拠し、シンプルなシステム構成(REQ-14)と低コスト運用(REQ-15)を実現
-
----
+- **保持されたパターン**: RESTful API、レイヤードアーキテクチャ(Routes → Controllers → Services → Models)
+- **新規コンポーネントの根拠**:
+  - Basic認証ミドルウェア: セキュアで実装が簡易な認証方式
+  - データ分析サービス: 統計計算とグラフ生成の責務を分離
+  - CSVインポートサービス: 過去データ移行の特殊要件に対応
+- **技術スタック整合性**: Deno 1.40+, Hono 4.0+, React 18+, PostgreSQL 15+を使用し、steering文書で定義された技術選定と完全に整合
+- **Steering準拠**: シンプルさ、型安全性、セキュリティ、テスタビリティの原則を遵守
 
 ### 技術スタックと設計判断
 
-#### 技術スタック
+#### 技術整合性
 
-**フロントエンド層**:
-- **選択**: React 18+ with TypeScript
-- **根拠**:
-  - コンポーネントベースアーキテクチャによる再利用性とメンテナンス性
-  - 豊富なチャート描画ライブラリ(Recharts等)のエコシステム
-  - レスポンシブデザインの実装が容易
-- **代替案**:
-  - Vue.js: 学習曲線は緩やかだが、TypeScript統合がやや劣る
-  - Svelte: パフォーマンスは優れるが、エコシステムが小規模
+本システムは、既に確立された技術スタックに基づいて実装します:
 
-**バックエンド層**:
-- **選択**: Deno 1.40+ with Hono 4.0+
-- **根拠**:
-  - TypeScript/JavaScriptのネイティブサポート、追加のトランスパイル不要
-  - Honoの軽量性と高速性(Express比で10倍高速)
-  - 標準ライブラリの充実とセキュリティのデフォルト(HTTPS強制、セキュアなパーミッション)
-  - 低メモリフットプリント、コスト最適化に貢献
-- **代替案**:
-  - Node.js + Express: 成熟したエコシステムだが、レガシーな依存関係管理
-  - Bun + Hono: 高速だが、本番環境での実績が不足
+**バックエンド**:
+- **Runtime**: Deno 1.40+ - TypeScript-native、Secure by default
+- **Framework**: Hono 4.0+ - 軽量、高速、TypeScript完全サポート
+- **Language**: TypeScript - 型安全性、モダンなECMAScript機能
 
-**データベース層**:
-- **選択**: PostgreSQL 15+
-- **根拠**:
-  - ACIDトランザクションによる健康データの整合性保証
-  - JSON型サポートによる柔軟なデータ構造(将来の拡張性)
-  - 成熟したバックアップ・復旧ツールチェーン
-  - Azure VMでの安定した運用実績
-- **代替案**:
-  - MySQL: 機能的には十分だが、JSON型サポートがやや劣る
-  - SQLite: シンプルだが、同時接続性能とバックアップ機能が不足
+**フロントエンド**:
+- **Library**: React 18+ - コンポーネントベース、豊富なエコシステム
+- **Language**: TypeScript - 型安全なコンポーネント開発
+- **Styling**: CSS Modules または Tailwind CSS(実装時に決定)
 
-**インフラ層**:
-- **選択**: Azure VM + Docker Compose
-- **根拠**:
-  - シンプルな単一VM構成による低コスト運用(月額100円/ユーザー以下)
-  - Docker Composeによる簡易なコンテナオーケストレーション
-  - Azureストレージによる安価なバックアップ保存
-  - 垂直スケーリング(VMスペックアップ)による段階的拡張
-- **代替案**:
-  - Kubernetes: オーバーエンジニアリング、初期ユーザー数100人には不要
-  - AWS Lightsail: コスト的には競合だが、Azureとの整合性重視
+**データベース**:
+- **RDBMS**: PostgreSQL 15+ - ACID準拠、JSON対応、豊富なツール
+
+**インフラ**:
+- **Containerization**: Docker Compose - 開発・本番環境の一貫性
+- **Hosting**: Azure Virtual Machine - コスト効率的、フルコントロール
+
+**新規依存関係**:
+- **bcrypt**: パスワードハッシュ化(Deno標準ライブラリまたはnpm経由)
+- **Chart.js** または **Recharts**: グラフ描画ライブラリ(Reactコンポーネント)
+- **CSV Parser**: CSVインポート処理(Deno標準ライブラリの `encoding/csv` を使用)
+- **PDF生成**: PDFKitまたはpuppeteer(実装時に評価)
 
 #### 主要な設計判断
 
 ##### 判断1: レイヤードアーキテクチャの採用
 
-**決定**: プレゼンテーション層、アプリケーション層、ドメイン層、インフラストラクチャ層の4層構造を採用します。
+**判断**: バックエンドにRoutes → Controllers → Services → Modelsの4層アーキテクチャを採用
 
-**コンテキスト**: システムの複雑性が中程度であり、将来的な機能拡張が見込まれるため、適切な関心の分離が必要です。
-
-**代替案**:
-1. **MVC (Model-View-Controller)**: シンプルだが、ビジネスロジックとデータアクセスの分離が不十分
-2. **ヘキサゴナルアーキテクチャ**: 高い柔軟性だが、初期開発コストが高く小規模システムには過剰
-3. **トランザクションスクリプト**: 最もシンプルだが、コードの重複とメンテナンス性の低下
-
-**選択されたアプローチ**: レイヤードアーキテクチャ
-- **プレゼンテーション層**: React UIコンポーネント、Hono HTTPハンドラ
-- **アプリケーション層**: ユースケース実装、トランザクション境界
-- **ドメイン層**: ビジネスロジック、エンティティ、値オブジェクト
-- **インフラストラクチャ層**: PostgreSQLリポジトリ、外部サービス連携
-
-**根拠**:
-- ビジネスロジックの再利用性: ドメイン層が複数のユースケースから独立して利用可能
-- テスタビリティ: 各層が独立してテスト可能、モック化が容易
-- 保守性: 変更の影響範囲が明確、層間の依存関係が一方向
-- 適切な複雑性: ヘキサゴナルアーキテクチャほど複雑でなく、MVCより構造化されている
-
-**トレードオフ**:
-- **獲得**: コードの整理と長期的なメンテナンス性、チーム開発での役割分担の明確化
-- **犠牲**: 初期開発の若干のオーバーヘッド、ボイラープレートコードの増加
-
-##### 判断2: Basic認証の採用(OAuth 2.0ではなく)
-
-**決定**: システム認証にHTTP Basic認証を採用します。
-
-**コンテキスト**: 初期ユーザー数100人、3年後でも1,000人の小規模システムであり、シンプルさと低コスト運用が最優先です。
+**文脈**:
+- 要件は7つの機能要件(認証、CRUD、分析、出力、移行等)を含み、明確な責務分離が必要
+- チームは小規模(1〜2名)で、過度な複雑さは避けたい
+- 将来的な機能拡張とテスタビリティを確保したい
 
 **代替案**:
-1. **OAuth 2.0 + JWT**: 業界標準だが、実装・運用コストが高い
-2. **セッションベース認証**: 実装は容易だが、水平スケーリング時にセッションストレージが必要
-3. **APIキー認証**: シンプルだが、ユーザー体験が劣る
+1. **MVC(Model-View-Controller)**: シンプルだが、ビジネスロジックの配置が曖昧になりがち
+2. **Clean Architecture**: 高度な疎結合だが、小規模プロジェクトには過剰
+3. **単層アーキテクチャ**: 最もシンプルだが、テストとメンテナンスが困難
 
-**選択されたアプローチ**: HTTP Basic認証(HTTPS強制)
-- ブラウザのネイティブサポートによる実装の簡素化
-- パスワードハッシュ化(bcrypt)による安全性確保
-- TLS 1.2以上による通信暗号化
+**選択したアプローチ**:
+- **Routes**: HTTPエンドポイントの定義とリクエストルーティング
+- **Controllers**: リクエスト検証、Serviceへの委譲、レスポンス整形
+- **Services**: ビジネスロジックの実装(統計計算、データ変換等)
+- **Models**: データベースアクセスとORMマッピング
 
 **根拠**:
-- 実装コスト: 追加のライブラリやトークン管理インフラが不要
-- 運用コスト: セッションストレージやトークンリフレッシュロジックが不要
-- ユーザー体験: ブラウザの認証情報保存機能を活用、手動ログイン不要
-- セキュリティ: HTTPSと組み合わせることで十分な安全性を確保
+- 責務が明確で理解しやすく、新規開発者のオンボーディングが容易
+- 各層が独立してテスト可能(ユニットテスト、統合テスト)
+- シンプルさとメンテナンス性のバランスが取れている
 
 **トレードオフ**:
-- **獲得**: 開発・運用コストの大幅削減、システム構成のシンプル化
-- **犠牲**: ソーシャルログイン(Google/Facebook等)の不可、きめ細かい権限制御の困難さ
+- **得られるもの**: 明確な責務分離、テスタビリティ、将来の拡張性
+- **犠牲にするもの**: Clean Architectureほどの疎結合性、若干のボイラープレートコード
 
-##### 判断3: 同期型データ処理(非同期ジョブキューではなく)
+##### 判断2: Basic認証の採用
 
-**決定**: データ登録、参照、分析、出力のすべての処理を同期型HTTPリクエスト/レスポンスで実装します。
+**判断**: 認証方式としてHTTP Basic Authenticationを採用(HTTPS必須)
 
-**コンテキスト**: パフォーマンス要件(データ登録1秒、参照2秒、グラフ描画3秒、出力10秒)が同期処理で達成可能な範囲内です。
+**文脈**:
+- 個人の健康情報という機密性の高いデータを保護する必要がある
+- システム利用者は少数(初期100ユーザー、3年後1,000ユーザー)
+- 低コスト運用を実現したい(OAuth等の外部認証サービスは避けたい)
 
 **代替案**:
-1. **非同期ジョブキュー(BullMQ等)**: 高負荷対応だが、複雑性とインフラコストが増加
-2. **Server-Sent Events(SSE)**: リアルタイム性は高いが、本システムには不要
-3. **WebSocket**: 双方向通信が可能だが、本システムの要件に過剰
+1. **JWT(JSON Web Token)**: ステートレスで拡張性が高いが、実装が複雑
+2. **OAuth 2.0**: 外部IDプロバイダー連携が可能だが、外部依存とコスト増加
+3. **セッションベース認証**: シンプルだが、水平スケーリングが困難
 
-**選択されたアプローチ**: 同期型HTTP API
-- REST APIによるCRUD操作
-- PostgreSQLトランザクション内での一貫性保証
-- クライアント側でのローディング表示
+**選択したアプローチ**:
+- HTTPS上でBasic認証ヘッダー(Base64エンコードされたユーザー名:パスワード)を送信
+- パスワードはbcryptでソルト付きハッシュ化してデータベースに保存
+- セッション管理はHTTP-onlyセキュアクッキーで実現
 
 **根拠**:
-- パフォーマンス十分性: ピーク時20ユーザーの同時接続、処理時間要件を満たす
-- 実装の簡素化: ジョブキュー、ワーカープロセス、ジョブステータス管理が不要
-- デバッグ容易性: リクエスト/レスポンスのトレースが直感的
-- コスト最適化: 追加のインフラ(Redisキュー等)が不要
+- ブラウザネイティブサポートで実装が簡易
+- HTTPS使用により平文送信のリスクを排除
+- 小規模ユーザーベースには十分なセキュリティレベル
 
 **トレードオフ**:
-- **獲得**: システム構成のシンプル化、開発・運用コストの削減
-- **犠牲**: 大量データ処理(1年分以上のPDF出力等)でのタイムアウトリスク、高負荷時のレスポンス遅延
+- **得られるもの**: 実装の簡易性、低コスト、ブラウザ標準対応
+- **犠牲にするもの**: MFA(多要素認証)の実装難易度、OAuth等の高度な認証機能
+
+##### 判断3: データ分析の同期処理
+
+**判断**: データ分析(統計計算、グラフ生成)を同期的なHTTPリクエスト内で処理
+
+**文脈**:
+- 統計計算(最大・最小・平均)とグラフデータ生成は、レスポンス時間3秒以内の要件がある
+- データ量は初年度20万件/年、3年後200万件/年で、1ユーザーあたりのデータ量は限定的
+- システムリソース(vCPU 2〜4コア)でリアルタイム処理が可能
+
+**代替案**:
+1. **非同期バッチ処理**: 定期的に事前計算し、結果をキャッシュ。高速だが、リアルタイム性が低い
+2. **イベント駆動アーキテクチャ**: 分析処理をキューで非同期実行。複雑性が増加
+3. **マテリアライズドビュー**: PostgreSQLの機能で事前集計。更新タイミングの制御が必要
+
+**選択したアプローチ**:
+- ユーザーがデータ分析画面を開いた時点で、指定期間のデータをクエリ
+- PostgreSQLのウィンドウ関数(`AVG()`, `MAX()`, `MIN()`)で統計値を計算
+- 30日移動平均もSQLで計算(`AVG() OVER (ORDER BY measurement_date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW)`)
+- 計算結果をJSONでフロントエンドに返却し、Chart.jsでグラフ描画
+
+**根拠**:
+- 1ユーザーあたりのデータ量は限定的(年間約1,825件 = 5件/日 × 365日)で、SQL最適化により3秒以内のレスポンスを達成可能
+- リアルタイム性を確保し、最新データを常に反映
+- アーキテクチャがシンプルで、運用コストが低い
+
+**トレードオフ**:
+- **得られるもの**: リアルタイムデータ分析、シンプルなアーキテクチャ、低い運用コスト
+- **犠牲にするもの**: 大規模データでのスケーラビリティ(将来的にキャッシュやバッチ処理への移行が必要になる可能性)
 
 ---
 
@@ -212,557 +190,770 @@ graph TB
 
 ```mermaid
 sequenceDiagram
+    participant User as ユーザー
     participant Browser as ブラウザ
-    participant Frontend as React SPA
-    participant Backend as Hono API
+    participant Auth as Auth Middleware
     participant DB as PostgreSQL
 
-    Browser->>Frontend: 1. アクセス
-    Frontend->>Backend: 2. GET /api/health
-    Backend-->>Frontend: 3. 401 Unauthorized
-    Browser->>Browser: 4. Basic認証ダイアログ表示
-    Browser->>Backend: 5. GET /api/auth/login<br/>(Authorization: Basic base64(user:pass))
-    Backend->>DB: 6. SELECT user WHERE username
-    DB-->>Backend: 7. user + password_hash
-    Backend->>Backend: 8. bcrypt.compare(password, hash)
+    User->>Browser: ログイン(ユーザー名・パスワード)
+    Browser->>Auth: Basic認証ヘッダー送信<br/>(HTTPS)
+    Auth->>Auth: Base64デコード
+    Auth->>DB: ユーザー情報取得<br/>(username)
+    DB-->>Auth: User record
+    Auth->>Auth: bcrypt検証<br/>(password vs hash)
 
     alt 認証成功
-        Backend-->>Browser: 9. 200 OK + Set-Cookie
-        Browser->>Frontend: 10. SPA初期化
-        Frontend->>Backend: 11. GET /api/data-types
-        Backend-->>Frontend: 12. データ種類一覧
+        Auth->>Browser: Set-Cookie: session_id<br/>(HTTP-only, Secure)
+        Auth-->>Browser: 200 OK
+        Browser-->>User: ホーム画面表示
     else 認証失敗
-        Backend-->>Browser: 9. 401 Unauthorized
-        Browser->>Browser: 10. 再度認証ダイアログ
+        Auth-->>Browser: 401 Unauthorized
+        Browser-->>User: エラーメッセージ表示
     end
 ```
 
-### 健康情報登録フロー
+### データ登録フロー
 
 ```mermaid
 sequenceDiagram
     participant User as ユーザー
     participant UI as React UI
-    participant API as Hono API
+    participant API as Backend API
     participant Service as HealthDataService
-    participant Repo as HealthDataRepository
     participant DB as PostgreSQL
 
-    User->>UI: 1. 測定日・種類・値を入力
-    User->>UI: 2. 登録ボタンクリック
-    UI->>UI: 3. クライアント側バリデーション
-    UI->>API: 4. POST /api/health-data<br/>{date, dataTypeId, value, memo}
-    API->>API: 5. 認証確認(Basic Auth)
-    API->>Service: 6. createHealthData(userId, dto)
-    Service->>Service: 7. ビジネスルール検証<br/>(日付・値の妥当性)
-    Service->>Repo: 8. save(healthData)
-    Repo->>DB: 9. BEGIN
-    Repo->>DB: 10. INSERT INTO health_data
-    Repo->>DB: 11. INSERT INTO audit_log
-    Repo->>DB: 12. COMMIT
-    DB-->>Repo: 13. health_data_id
-    Repo-->>Service: 14. HealthData entity
-    Service-->>API: 15. HealthDataResponse
-    API-->>UI: 16. 201 Created
-    UI->>User: 17. 成功通知表示
+    User->>UI: データ種類選択<br/>(血圧上、体重等)
+    UI->>User: 入力フォーム表示
+    User->>UI: 測定値・測定日入力
+    UI->>UI: クライアントサイド検証<br/>(数値型、未来日付チェック)
+    UI->>API: POST /api/health-data<br/>{dataTypeId, value, date}
+    API->>API: リクエスト検証<br/>(必須項目、型チェック)
+    API->>Service: createHealthData()
+    Service->>DB: INSERT INTO health_data
+    DB-->>Service: 登録成功
+    Service->>Service: 操作ログ記録
+    Service-->>API: HealthData
+    API-->>UI: 201 Created
+    UI-->>User: 成功メッセージ表示
 ```
 
-### データ分析・グラフ描画フロー
+### データ分析フロー
 
 ```mermaid
 sequenceDiagram
     participant User as ユーザー
     participant UI as React UI
-    participant API as Hono API
+    participant API as Backend API
     participant Service as AnalyticsService
-    participant Repo as HealthDataRepository
     participant DB as PostgreSQL
 
-    User->>UI: 1. 期間・データ種類を選択
-    User->>UI: 2. グラフ表示ボタンクリック
-    UI->>API: 3. GET /api/analytics/chart?<br/>start=2024-01-01&end=2024-12-31&typeId=1
-    API->>Service: 4. getChartData(userId, query)
-    Service->>Repo: 5. findByPeriodAndType(userId, start, end, typeId)
-    Repo->>DB: 6. SELECT * FROM health_data<br/>WHERE user_id AND measurement_date BETWEEN<br/>ORDER BY measurement_date ASC
-    DB-->>Repo: 7. health_data[]
-    Repo-->>Service: 8. HealthData[]
-    Service->>Service: 9. 統計計算<br/>(max, min, avg)
-    Service->>Service: 10. 30日移動平均計算
-    Service-->>API: 11. ChartDataResponse<br/>{data[], stats, movingAvg[]}
-    API-->>UI: 12. 200 OK
-    UI->>UI: 13. Recharts でグラフ描画
-    UI->>User: 14. グラフ表示
+    User->>UI: データ種類・期間選択
+    User->>UI: 分析ボタンクリック
+    UI->>API: GET /api/analytics?dataTypeId=1&from=2024-01-01&to=2024-12-31
+    API->>Service: calculateStatistics()
+    Service->>DB: SELECT MAX(value), MIN(value), AVG(value)<br/>FROM health_data<br/>WHERE data_type_id = ? AND date BETWEEN ? AND ?
+    DB-->>Service: 統計値
+    Service->>DB: SELECT date, value,<br/>AVG(value) OVER (ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW)<br/>AS moving_avg
+    DB-->>Service: 時系列データ + 移動平均
+    Service-->>API: { stats, timeSeries, movingAverage }
+    API-->>UI: 200 OK + JSON
+    UI->>UI: Chart.jsでグラフ描画
+    UI-->>User: 統計値とグラフ表示
+```
+
+### グラフ印刷フロー
+
+本システムでは、2つの印刷方法を提供します。
+
+#### 印刷方法1: PDF出力による印刷 (推奨)
+
+**用途**: 医療機関への提出、長期保存用の正式な印刷物
+
+**特徴**:
+- 高品質で一貫性のある印刷出力
+- グラフ、統計値、データ一覧を含む包括的なレポート
+- ブラウザ・OS・プリンタに依存しない出力品質
+- 医療機関が要求するフォーマットに対応
+
+**技術実装**:
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant UI as React UI
+    participant ChartJS as Chart.js
+    participant API as Backend API
+    participant ExportService as ExportService
+
+    User->>UI: PDF出力ボタンをクリック
+    UI->>ChartJS: canvas.toDataURL('image/png')
+    ChartJS-->>UI: グラフ画像(Base64)
+    UI->>API: POST /api/export/pdf<br/>{startDate, endDate, chartImage}
+    API->>ExportService: exportToPDF(userId, query, chartImage)
+    ExportService->>ExportService: PDFKit/jsPDFでPDF生成<br/>(グラフ画像埋め込み)
+    ExportService-->>API: PDFバッファ
+    API-->>UI: 200 OK + application/pdf
+    UI->>User: PDFダウンロード
+    User->>User: ダウンロードしたPDFを印刷
+```
+
+**実装詳細**:
+- Chart.jsのcanvas要素を`canvas.toDataURL('image/png')`で画像化
+- バックエンドでPDFライブラリ(PDFKit for Deno または jsPDF)を使用
+- PDF内容: ヘッダー、統計サマリー、グラフ画像、データ表、フッター(日付、ページ番号)
+
+---
+
+#### 印刷方法2: ブラウザ直接印刷
+
+**用途**: 個人用の簡易記録、即時印刷
+
+**特徴**:
+- PDF生成より高速(サーバー通信不要)
+- 現在表示中の画面をそのまま印刷
+- ブラウザの印刷機能(Ctrl+P / Cmd+P)を使用
+
+**技術実装**:
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant UI as React UI
+    participant Browser as ブラウザ
+
+    User->>UI: 画面印刷ボタンをクリック<br/>または Ctrl+P / Cmd+P
+    UI->>UI: window.print()を呼び出し
+    UI->>Browser: 印刷ダイアログ表示
+    Browser->>Browser: @media print CSSを適用<br/>(ナビゲーション非表示、<br/>グラフサイズ調整)
+    Browser-->>User: 印刷プレビュー表示
+    User->>Browser: 印刷実行
+```
+
+**実装詳細**:
+
+1. **印刷用CSS** (`@media print`):
+```css
+@media print {
+  /* ナビゲーション・ボタンを非表示 */
+  nav, .no-print, button {
+    display: none !important;
+  }
+
+  /* グラフコンテナのサイズ調整 */
+  .chart-container {
+    width: 100%;
+    max-width: 800px;
+    page-break-inside: avoid;
+  }
+
+  /* 統計カードの改ページ制御 */
+  .stats-card {
+    page-break-inside: avoid;
+  }
+
+  /* 背景色を削除(インク節約) */
+  * {
+    background: white !important;
+    color: black !important;
+  }
+}
+```
+
+2. **Chart.js設定**:
+```typescript
+const chartOptions = {
+  responsive: true,
+  maintainAspectRatio: true,
+  aspectRatio: 2, // 印刷時の縦横比
+  // 印刷時にcanvasが正しくレンダリングされるように
+  animation: {
+    onComplete: function() {
+      // 印刷時にアニメーションを無効化
+    }
+  }
+};
+```
+
+3. **印刷ボタン実装**:
+```typescript
+const handlePrint = () => {
+  window.print();
+};
+
+// UIコンポーネント
+<button onClick={handlePrint} className="no-print">
+  画面を印刷
+</button>
+```
+
+**制限事項**:
+- ブラウザ・プリンタによって出力品質が異なる場合がある
+- ページ分割が自動で行われるため、レイアウト崩れの可能性
+- カラー印刷の場合、背景色が印刷されない場合がある
+
+---
+
+#### 印刷機能の選択基準
+
+| 項目 | PDF出力 | ブラウザ印刷 |
+|------|---------|-------------|
+| **用途** | 医療機関提出、公式記録 | 個人メモ、即時確認 |
+| **品質** | 高品質・一貫性あり | ブラウザ依存 |
+| **速度** | やや遅い(サーバー処理) | 高速 |
+| **実装優先度** | Phase 1 (必須) | Phase 1 (推奨) |
+| **対応要件** | 要件6(データ出力) | 要件6(補助機能) |
+
+**Phase 1実装方針**:
+- PDF出力機能: 必須実装(RDDD0103 G-04達成に必須)
+- ブラウザ印刷機能: 推奨実装(ユーザビリティ向上、実装コスト低)
+
+---
+
+### データ更新フロー
+
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant UI as React UI
+    participant API as Backend API
+    participant Service as HealthDataService
+    participant DB as PostgreSQL
+
+    User->>UI: データ一覧から編集対象選択
+    UI->>API: GET /api/health-data/:id
+    API->>Service: findById(id, userId)
+    Service->>DB: SELECT * FROM health_data WHERE id = ? AND user_id = ?
+    DB-->>Service: HealthData
+    Service-->>API: HealthData
+    API-->>UI: 200 OK + HealthData
+    UI-->>User: 編集フォーム表示(既存値セット)
+    User->>UI: 測定値・メモを変更
+    UI->>API: PUT /api/health-data/:id<br/>{value, memo}
+    API->>API: 所有権検証(user_id)
+    API->>Service: updateHealthData(id, userId, dto)
+    Service->>DB: UPDATE health_data SET value = ?, memo = ? WHERE id = ? AND user_id = ?
+    DB-->>Service: 更新成功
+    Service->>Service: 操作ログ記録
+    Service-->>API: HealthData
+    API-->>UI: 200 OK
+    UI-->>User: 更新完了メッセージ
+```
+
+### データ削除フロー
+
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant UI as React UI
+    participant API as Backend API
+    participant Service as HealthDataService
+    participant DB as PostgreSQL
+
+    User->>UI: データ一覧から削除対象選択
+    UI->>User: 確認ダイアログ表示<br/>(復元不可の警告)
+    User->>UI: 削除承認
+    UI->>API: DELETE /api/health-data/:id
+    API->>API: 所有権検証(user_id)
+    API->>Service: deleteHealthData(id, userId)
+    Service->>DB: DELETE FROM health_data WHERE id = ? AND user_id = ?
+    DB-->>Service: 削除成功
+    Service->>Service: 操作ログ記録
+    Service-->>API: void
+    API-->>UI: 204 No Content
+    UI-->>User: 削除完了メッセージ
+```
+
+### データ参照フロー
+
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant UI as React UI
+    participant API as Backend API
+    participant Service as HealthDataService
+    participant DB as PostgreSQL
+
+    User->>UI: 参照画面を開く
+    UI->>API: GET /api/health-data?from=&to=&dataTypeId=
+    API->>Service: findHealthData(userId, query)
+    Service->>DB: SELECT * FROM health_data<br/>WHERE user_id = ? AND measurement_date BETWEEN ? AND ?<br/>ORDER BY measurement_date DESC
+    DB-->>Service: HealthData[]
+    Service-->>API: HealthData[]
+    API-->>UI: 200 OK + HealthData[]
+    UI-->>User: データ一覧表示<br/>(ページネーション付き)
+```
+
+### PDF出力フロー
+
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant UI as React UI
+    participant API as Backend API
+    participant ExportService as ExportService
+    participant AnalyticsService as AnalyticsService
+    participant DB as PostgreSQL
+
+    User->>UI: 期間・出力形式(PDF)選択
+    User->>UI: 出力ボタンクリック
+    UI->>API: POST /api/export/pdf<br/>{startDate, endDate, dataTypeIds[]}
+    API->>ExportService: exportToPDF(userId, query)
+    ExportService->>DB: SELECT * FROM health_data<br/>WHERE user_id = ? AND date BETWEEN ?
+    DB-->>ExportService: HealthData[]
+    ExportService->>AnalyticsService: calculateStatistics(data)
+    AnalyticsService-->>ExportService: Statistics
+    ExportService->>ExportService: PDF生成<br/>(統計値、データ一覧、グラフ)
+    ExportService->>DB: INSERT INTO data_export
+    DB-->>ExportService: export_id
+    ExportService-->>API: PDFバッファ
+    API-->>UI: 200 OK + application/pdf
+    UI->>User: PDFダウンロード
+```
+
+### CSV出力フロー
+
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant UI as React UI
+    participant API as Backend API
+    participant ExportService as ExportService
+    participant DB as PostgreSQL
+
+    User->>UI: 期間・出力形式(CSV)選択
+    User->>UI: 出力ボタンクリック
+    UI->>API: POST /api/export/csv<br/>{startDate, endDate, dataTypeIds[]}
+    API->>ExportService: exportToCSV(userId, query)
+    ExportService->>DB: SELECT hd.measurement_date, dt.data_type_name, hd.value, dt.unit, hd.memo<br/>FROM health_data hd JOIN data_type_master dt
+    DB-->>ExportService: JoinedData[]
+    ExportService->>ExportService: CSV生成<br/>(測定日,データ種類,測定値,単位,メモ)
+    ExportService->>DB: INSERT INTO data_export
+    DB-->>ExportService: export_id
+    ExportService-->>API: CSV文字列
+    API-->>UI: 200 OK + text/csv
+    UI->>User: CSVダウンロード
+```
+
+### CSVインポートフロー
+
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant UI as React UI
+    participant API as Backend API
+    participant ImportService as ImportService
+    participant DB as PostgreSQL
+
+    User->>UI: インポート画面を開く
+    UI->>User: CSVフォーマット説明表示
+    User->>UI: CSVファイル選択・アップロード
+    UI->>API: POST /api/import/csv<br/>Content-Type: multipart/form-data
+    API->>ImportService: importFromCSV(userId, file)
+    ImportService->>ImportService: CSVファイル検証<br/>(形式、必須カラム)
+
+    loop 各CSV行
+        ImportService->>DB: SELECT data_type_id FROM data_type_master WHERE name = ?
+        DB-->>ImportService: data_type_id
+        alt データ種類が存在
+            ImportService->>DB: INSERT INTO health_data<br/>(user_id, data_type_id, date, value, memo)
+            DB-->>ImportService: 成功
+        else データ種類が存在しない
+            ImportService->>ImportService: エラー行として記録
+        end
+    end
+
+    ImportService->>Service: 操作ログ記録
+    ImportService-->>API: {imported: count, errors: Error[]}
+    API-->>UI: 200 OK + インポート結果
+    UI-->>User: 成功件数・失敗件数・エラー詳細表示
+```
+
+### データ種類登録フロー
+
+```mermaid
+sequenceDiagram
+    participant Admin as システム管理者
+    participant UI as 管理画面UI
+    participant API as Backend API
+    participant Service as DataTypeService
+    participant DB as PostgreSQL
+
+    Admin->>UI: データ種類管理画面を開く
+    UI->>API: GET /api/data-types
+    API->>Service: findAll()
+    Service->>DB: SELECT * FROM data_type_master ORDER BY display_order
+    DB-->>Service: DataType[]
+    Service-->>API: DataType[]
+    API-->>UI: 200 OK + DataType[]
+    UI-->>Admin: データ種類一覧表示
+    Admin->>UI: 新規登録ボタンクリック
+    UI-->>Admin: 入力フォーム表示
+    Admin->>UI: データ種類名・単位・表示順入力
+    UI->>API: POST /api/data-types<br/>{name, unit, displayOrder}
+    API->>Service: createDataType(dto)
+    Service->>DB: INSERT INTO data_type_master<br/>(name, unit, display_order, is_active)
+    DB-->>Service: data_type_id
+    Service-->>API: DataType
+    API-->>UI: 201 Created
+    UI-->>Admin: 登録完了メッセージ
+```
+
+### データ種類更新フロー
+
+```mermaid
+sequenceDiagram
+    participant Admin as システム管理者
+    participant UI as 管理画面UI
+    participant API as Backend API
+    participant Service as DataTypeService
+    participant DB as PostgreSQL
+
+    Admin->>UI: データ種類一覧から編集対象選択
+    UI->>API: GET /api/data-types/:id
+    API->>Service: findById(id)
+    Service->>DB: SELECT * FROM data_type_master WHERE id = ?
+    DB-->>Service: DataType
+    Service-->>API: DataType
+    API-->>UI: 200 OK + DataType
+    UI-->>Admin: 編集フォーム表示(既存値セット)
+    Admin->>UI: データ種類名・単位・表示順を変更
+    UI->>API: PUT /api/data-types/:id<br/>{name, unit, displayOrder}
+    API->>Service: updateDataType(id, dto)
+    Service->>DB: UPDATE data_type_master<br/>SET name = ?, unit = ?, display_order = ?, updated_at = NOW()
+    DB-->>Service: 更新成功
+    Service-->>API: DataType
+    API-->>UI: 200 OK
+    UI-->>Admin: 更新完了メッセージ
+```
+
+### データ種類無効化フロー
+
+```mermaid
+sequenceDiagram
+    participant Admin as システム管理者
+    participant UI as 管理画面UI
+    participant API as Backend API
+    participant Service as DataTypeService
+    participant DB as PostgreSQL
+
+    Admin->>UI: データ種類一覧から無効化対象選択
+    UI->>Admin: 確認ダイアログ表示<br/>(関連データは保持、新規登録不可の説明)
+    Admin->>UI: 無効化承認
+    UI->>API: DELETE /api/data-types/:id<br/>または PATCH /api/data-types/:id/deactivate
+    API->>Service: deactivateDataType(id)
+    Service->>DB: UPDATE data_type_master<br/>SET is_active = false, updated_at = NOW()<br/>WHERE id = ?
+    DB-->>Service: 更新成功
+    Service-->>API: void
+    API-->>UI: 204 No Content
+    UI-->>Admin: 無効化完了メッセージ
+```
+
+### ユーザー登録フロー
+
+```mermaid
+sequenceDiagram
+    participant User as 新規ユーザー
+    participant UI as React UI
+    participant API as Backend API
+    participant Service as UserService
+    participant DB as PostgreSQL
+
+    User->>UI: ユーザー登録画面を開く
+    UI-->>User: 登録フォーム表示
+    User->>UI: ユーザー名・パスワード入力
+    UI->>UI: クライアント側検証<br/>(8文字以上、英数字混在)
+    UI->>API: POST /api/auth/register<br/>{username, password}
+    API->>API: バリデーション<br/>(パスワード強度チェック)
+    API->>Service: createUser(dto)
+    Service->>Service: bcryptでハッシュ化<br/>(ソルト10ラウンド)
+    Service->>DB: SELECT COUNT(*) FROM users WHERE username = ?
+    DB-->>Service: count
+
+    alt ユーザー名が既存
+        Service-->>API: DuplicateError
+        API-->>UI: 409 Conflict
+        UI-->>User: 「このユーザー名は既に使用されています」
+    else ユーザー名が利用可能
+        Service->>DB: INSERT INTO users (username, password_hash)
+        DB-->>Service: user_id
+        Service-->>API: User
+        API-->>UI: 201 Created
+        UI-->>User: 登録完了・ログイン画面へ
+    end
+```
+
+### パスワード変更フロー
+
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant UI as React UI
+    participant API as Backend API
+    participant Service as UserService
+    participant DB as PostgreSQL
+
+    User->>UI: パスワード変更画面を開く
+    UI-->>User: 変更フォーム表示
+    User->>UI: 現在のパスワード・新しいパスワード入力
+    UI->>UI: クライアント側検証<br/>(8文字以上、英数字混在)
+    UI->>API: PUT /api/auth/password<br/>{currentPassword, newPassword}
+    API->>Service: changePassword(userId, dto)
+    Service->>DB: SELECT password_hash FROM users WHERE user_id = ?
+    DB-->>Service: password_hash
+    Service->>Service: bcrypt検証<br/>(currentPassword vs hash)
+
+    alt 現在のパスワードが正しい
+        Service->>Service: 新パスワードをbcryptでハッシュ化
+        Service->>DB: UPDATE users SET password_hash = ?, updated_at = NOW()
+        DB-->>Service: 更新成功
+        Service-->>API: void
+        API-->>UI: 200 OK
+        UI-->>User: パスワード変更完了
+    else 現在のパスワードが誤り
+        Service-->>API: UnauthorizedError
+        API-->>UI: 401 Unauthorized
+        UI-->>User: 「現在のパスワードが正しくありません」
+    end
+```
+
+### ユーザー削除フロー
+
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant UI as React UI
+    participant API as Backend API
+    participant Service as UserService
+    participant DB as PostgreSQL
+
+    User->>UI: アカウント削除画面を開く
+    UI->>User: 確認ダイアログ表示<br/>(全データ削除、復元不可の警告)
+    User->>UI: パスワード再入力で本人確認
+    UI->>API: DELETE /api/auth/account<br/>{password}
+    API->>Service: deleteUser(userId, password)
+    Service->>DB: SELECT password_hash FROM users WHERE user_id = ?
+    DB-->>Service: password_hash
+    Service->>Service: bcrypt検証<br/>(password vs hash)
+
+    alt パスワードが正しい
+        Service->>DB: BEGIN TRANSACTION
+        Service->>DB: DELETE FROM users WHERE user_id = ?<br/>(CASCADE: health_data, data_export自動削除)
+        DB-->>Service: 削除成功
+        Service->>DB: COMMIT
+        Service-->>API: void
+        API-->>UI: 204 No Content
+        UI-->>User: アカウント削除完了・トップページへ
+    else パスワードが誤り
+        Service-->>API: UnauthorizedError
+        API-->>UI: 401 Unauthorized
+        UI-->>User: 「パスワードが正しくありません」
+    end
 ```
 
 ---
 
 ## 要件トレーサビリティ
 
-| 要件 | 要件サマリー | コンポーネント | インターフェース | フロー |
-|------|-------------|--------------|--------------|-------|
-| 1.1-1.6 | 健康情報登録 | HealthDataService, HealthDataRepository | POST /api/health-data, PUT /api/health-data/:id, DELETE /api/health-data/:id | 健康情報登録フロー |
-| 2.1-2.5 | 健康情報参照 | HealthDataService, HealthDataRepository | GET /api/health-data?start&end&typeId | データ参照フロー |
-| 3.1-3.5 | データ種類管理 | DataTypeService, DataTypeRepository | GET /api/data-types, POST /api/data-types, PUT /api/data-types/:id | マスタ管理フロー |
-| 4.1-4.6 | データ分析機能 | AnalyticsService, HealthDataRepository | GET /api/analytics/stats, GET /api/analytics/chart | データ分析・グラフ描画フロー |
-| 5.1-5.5 | データ出力機能 | ExportService, HealthDataRepository | POST /api/export/pdf, POST /api/export/csv | データ出力フロー |
-| 6.1-6.6 | 過去データ移行 | ImportService, HealthDataRepository | POST /api/import/csv | CSVインポートフロー |
-| 7.1-7.6 | 認証とアクセス制御 | AuthService, UserRepository, AuthMiddleware | POST /api/auth/login, GET /api/auth/logout | ユーザー認証フロー |
-| 8.1-8.6 | システム稼働とパフォーマンス | 全コンポーネント | 全API(1秒/2秒/3秒レスポンス) | 全フロー |
-| 9.1-9.6 | データ保護とバックアップ | BackupService | cron job: pg_dump | バックアップフロー |
-| 10.1-10.5 | マルチデバイス対応 | React UI(レスポンシブデザイン) | 全UIコンポーネント | 全フロー |
-| 11.1-11.6 | 運用とサポート | MonitoringService, LoggingMiddleware | GET /api/health, GET /api/metrics | 監視フロー |
-| 12.1-12.8 | セキュリティ対策 | AuthMiddleware, InputValidator, SecurityMiddleware | 全API(HTTPS, CSRF Token) | 全フロー |
+### 機能要件とアクティビティのマッピング
+
+| アクティビティID | アクティビティ名 | 要件ID | コンポーネント | インターフェース | フロー |
+|-----------------|----------------|--------|----------------|------------------|--------|
+| CBP-01-01-01 | 健康情報登録依頼 | 要件2 | HealthDataService, HealthDataModel | POST /api/health-data | データ登録フロー |
+| CBP-01-02-01 | 健康情報変更依頼 | 要件2 | HealthDataService, HealthDataModel | PUT /api/health-data/:id | データ更新フロー |
+| CBP-01-03-01 | 健康情報削除依頼 | 要件2 | HealthDataService, HealthDataModel | DELETE /api/health-data/:id | データ削除フロー |
+| CBP-01-04-01 | 健康情報検索 | 要件3 | HealthDataService, HealthDataModel | GET /api/health-data?from&to&dataTypeId | データ参照フロー |
+| CBP-02-01-01 | 統計値計算依頼 | 要件5 | AnalyticsService, HealthDataModel | GET /api/analytics/stats?dataTypeId&from&to | データ分析フロー |
+| CBP-02-02-01 | グラフ描画依頼 | 要件5 | AnalyticsService, HealthDataModel | GET /api/analytics/chart?dataTypeId&from&to | データ分析フロー |
+| CBP-02-03-01 | 移動平均計算依頼 | 要件5 | AnalyticsService, HealthDataModel | GET /api/analytics/chart?dataTypeId&from&to | データ分析フロー |
+| CBP-03-01-01 | データ出力依頼 | 要件6 | ExportService, HealthDataModel, DataExportModel | POST /api/export/pdf, POST /api/export/csv | PDF出力フロー, CSV出力フロー |
+| CBP-03-02-01 | 出力データ準備 | 要件6 | ExportService | (フロントエンド処理) | - |
+| CBP-03-02-02 | データ提供 | 要件6 | - | (システム外処理) | - |
+| CBP-03-02-03 | データ確認・保管 | 要件6 | - | (医療機関側処理) | - |
+| CBP-04-01-01 | データ種類登録依頼 | 要件4 | DataTypeService, DataTypeModel | POST /api/data-types | データ種類登録フロー |
+| CBP-04-02-01 | データ種類更新依頼 | 要件4 | DataTypeService, DataTypeModel | PUT /api/data-types/:id | データ種類更新フロー |
+| CBP-04-03-01 | データ種類無効化依頼 | 要件4 | DataTypeService, DataTypeModel | PATCH /api/data-types/:id/deactivate | データ種類無効化フロー |
+| CBP-05-01-01 | ユーザー登録依頼 | 要件1 | UserService, UserModel | POST /api/auth/register | ユーザー登録フロー |
+| CBP-05-02-01 | パスワード変更依頼 | 要件1 | UserService, UserModel | PUT /api/auth/password | パスワード変更フロー |
+| CBP-05-03-01 | ユーザー削除依頼 | 要件1 | UserService, UserModel | DELETE /api/auth/account | ユーザー削除フロー |
+| CBP-06-01-01 | CSVファイルアップロード | 要件7 | ImportService | POST /api/import/csv (multipart/form-data) | CSVインポートフロー |
+| CBP-06-01-02 | CSVデータ検証 | 要件7 | ImportService | (内部処理) | CSVインポートフロー |
+| CBP-06-01-03 | データ一括登録 | 要件7 | ImportService, HealthDataModel | (内部処理: バルクINSERT) | CSVインポートフロー |
+| - | 認証処理 | 要件1 | AuthMiddleware, UserService | POST /api/auth/login | ユーザー認証フロー |
+| - | アクセス制御 | 要件1 | AuthMiddleware | (全APIエンドポイント) | 全フロー |
+
+### 非機能要件のマッピング
+
+| 非機能要件ID | 要件概要 | コンポーネント | 実装方法 | フロー |
+|-------------|----------|----------------|----------|--------|
+| NFR-1 | 性能 | 全コンポーネント | データベースインデックス(user_id, measurement_date, data_type_id)、SQLクエリ最適化 | 全フロー |
+| NFR-2 | セキュリティ | AuthMiddleware, すべてのController | Basic認証、TLS 1.2+、bcryptハッシュ化、プリペアドステートメント、CSRF対策 | ユーザー認証フロー、全フロー |
+| NFR-3 | 可用性 | Infrastructure | Docker Compose、日次バックアップ、稼働監視、RTO 4時間、RPO 24時間 | バックアップフロー |
+| NFR-4 | 拡張性 | 全コンポーネント | 垂直スケーリング対応(2-4 vCPU)、レイヤードアーキテクチャ | - |
+| NFR-5 | 保守性 | 全コンポーネント | TypeScript型安全性、レイヤードアーキテクチャ、操作ログ記録 | 全フロー |
+| NFR-6 | ユーザビリティ | React UI | レスポンシブデザイン、エラーメッセージの明確化、操作フィードバック | 全フロー |
 
 ---
 
 ## コンポーネントとインターフェース
 
-### フロントエンド層
+### バックエンド - レイヤードアーキテクチャ
 
-#### React UIコンポーネント
+#### Routes層
 
-**責任と境界**
-- **主要責任**: ユーザーインタラクションの処理、データの表示、バックエンドAPIとの通信
-- **ドメイン境界**: プレゼンテーション層、ビジネスロジックを含まない
-- **データ所有権**: UIステート(入力フォームの状態、ローディング状態)のみ所有
-- **トランザクション境界**: なし(バックエンドAPIがトランザクション管理)
+**責務**: HTTPエンドポイントの定義、リクエストのルーティング
 
-**依存関係**
-- **インバウンド**: なし(エンドユーザーが直接操作)
-- **アウトバウンド**: Hono REST API(axios経由)
-- **外部**: React 18+, Recharts(グラフ描画), TailwindCSS(スタイリング), axios(HTTP通信)
+**主要ルート**:
+- `/api/auth/*` - 認証関連
+- `/api/health-data/*` - 健康データCRUD
+- `/api/data-types/*` - データ種類マスタ管理
+- `/api/analytics/*` - データ分析・統計
+- `/api/export/*` - PDF/CSV出力
+- `/api/import/*` - CSVインポート
 
-**外部依存関係の調査**:
-- **React 18.2+**: 公式ドキュメント(https://react.dev/)確認済み、Concurrent Rendering、Suspense、Server Componentsをサポート
-- **Recharts 2.10+**: グラフ描画ライブラリ(https://recharts.org/)、折れ線グラフ・エリアチャート対応、レスポンシブデザイン対応
-- **TailwindCSS 3.4+**: ユーティリティファーストCSSフレームワーク、モバイルファーストのレスポンシブデザインをサポート
-- **axios 1.6+**: HTTPクライアント、インターセプターによるBasic認証ヘッダー自動付与
+#### Controllers層
 
-**契約定義: サービスインターフェース**
+**責務**: リクエスト検証、Serviceへの委譲、レスポンス整形、HTTPステータスコード決定
+
+**主要コントローラー**:
+- `AuthController`: ログイン、ログアウト
+- `HealthDataController`: 健康データのCRUD操作
+- `DataTypeController`: データ種類マスタのCRUD
+- `AnalyticsController`: 統計計算、グラフデータ生成
+- `ExportController`: PDF/CSV出力
+- `ImportController`: CSVインポート
+
+#### Services層
+
+**責務**: ビジネスロジック実装、トランザクション管理、ドメインルール適用
+
+**主要サービス**:
+- `UserService`: ユーザー管理、パスワード検証
+- `HealthDataService`: 健康データのビジネスロジック
+- `DataTypeService`: データ種類マスタの管理、**状態遷移管理**
+- `AnalyticsService`: 統計計算(最大・最小・平均)、30日移動平均計算
+- `ExportService`: PDF/CSV生成
+- `ImportService`: CSVパース、データ検証、一括登録
+
+##### DataTypeServiceの状態遷移管理
+
+`DataTypeService`は、DATA_TYPE_MASTERエンティティの状態遷移(有効⇄無効)を管理します。
+
+**状態定義**:
+- **有効状態 (is_active = true)**: ユーザーが健康情報登録時にデータ種類として選択可能
+- **無効状態 (is_active = false)**: 新規登録時の選択肢に表示されないが、既存データは保持
+
+**状態遷移メソッド**:
 
 ```typescript
-// UIコンポーネントの主要インターフェース
-interface HealthDataFormProps {
-  onSubmit: (data: HealthDataInput) => Promise<void>;
-  dataTypes: DataType[];
-}
+interface DataTypeService {
+  /**
+   * データ種類を新規登録する(初期状態: 有効)
+   */
+  createDataType(dto: CreateDataTypeDto): Promise<DataType>;
 
-interface HealthDataInput {
-  measurementDate: string; // ISO 8601 date
-  dataTypeId: number;
-  value: number;
-  memo?: string;
-}
+  /**
+   * データ種類の属性を更新する(状態は変更しない)
+   */
+  updateDataType(id: number, dto: UpdateDataTypeDto): Promise<DataType>;
 
-interface DataType {
-  id: number;
-  name: string;
-  unit: string;
-  displayOrder: number;
-}
+  /**
+   * データ種類を無効化する(論理削除)
+   * @precondition データ種類が有効状態であること
+   * @postcondition is_active = false に設定される
+   * @invariant 関連するHEALTH_DATAレコードは削除されない
+   */
+  deactivateDataType(id: number): Promise<void>;
 
-interface ChartProps {
-  data: HealthDataPoint[];
-  movingAverage?: MovingAveragePoint[];
-  stats: Statistics;
-}
+  /**
+   * 有効なデータ種類のみを取得する
+   */
+  findActiveDataTypes(): Promise<DataType[]>;
 
-interface HealthDataPoint {
-  date: string;
-  value: number;
-}
-
-interface Statistics {
-  max: number;
-  min: number;
-  average: number;
+  /**
+   * すべてのデータ種類を取得する(管理画面用)
+   */
+  findAllDataTypes(): Promise<DataType[]>;
 }
 ```
 
-**事前条件**: ユーザーがBasic認証を完了していること、ブラウザがJavaScript有効であること
-**事後条件**: バックエンドAPIが正常にレスポンスを返すこと、UIステートが更新されること
-**不変条件**: 認証セッションが有効である限り、APIリクエストが認証ヘッダーを含むこと
+**状態遷移のビジネスルール**:
 
-**状態管理**
-- **状態モデル**: React Context API + useReducerによるグローバルステート管理
-- **永続化**: LocalStorageに認証トークンを保存(オプション)
-- **並行性制御**: なし(UIは単一スレッド)
+1. **新規登録時**: データ種類は必ず`is_active = true`(有効状態)で作成される
+2. **無効化の条件**: 有効状態のデータ種類のみ無効化可能
+3. **無効化の影響**:
+   - 新規データ登録時の選択肢から除外される
+   - 既存のHEALTH_DATAレコードは削除されず、参照可能
+   - 再有効化は想定しない(必要であれば新規登録する)
+4. **物理削除の禁止**: データ整合性維持のため、物理削除は実施しない
 
----
+**状態遷移図**:
 
-### バックエンド層 - アプリケーション層
+```mermaid
+stateDiagram-v2
+    [*] --> 有効: createDataType()
+    有効 --> 有効: updateDataType()
+    有効 --> 無効: deactivateDataType()
+    無効 --> [*]
 
-#### HealthDataService
+    note right of 有効
+        is_active = true
+        新規データ登録時に選択可能
+        findActiveDataTypes()で取得
+    end note
 
-**責任と境界**
-- **主要責任**: 健康情報のCRUD操作、ビジネスルール検証、トランザクション管理
-- **ドメイン境界**: 健康情報管理ドメイン
-- **データ所有権**: HEALTH_DATAテーブルのデータ所有
-- **トランザクション境界**: 各サービスメソッドがトランザクション境界
-
-**依存関係**
-- **インバウンド**: Hono APIハンドラ
-- **アウトバウンド**: HealthDataRepository, DataTypeRepository
-- **外部**: なし
-
-**契約定義: サービスインターフェース**
-
-```typescript
-interface HealthDataService {
-  /**
-   * 健康情報を登録する
-   * @precondition dataTypeIdがDATA_TYPE_MASTERに存在すること
-   * @postcondition HEALTH_DATAテーブルにレコードが追加されること
-   * @throws ValidationError 入力値が不正な場合
-   * @throws DuplicateError 同一ユーザー・日付・データ種類の組み合わせが既に存在する場合
-   */
-  createHealthData(
-    userId: number,
-    input: CreateHealthDataDto
-  ): Promise<Result<HealthData, HealthDataError>>;
-
-  /**
-   * 健康情報を更新する
-   * @precondition healthDataIdが存在し、userIdが所有者であること
-   * @postcondition HEALTH_DATAテーブルのレコードが更新されること
-   * @throws NotFoundError 指定されたhealthDataIdが存在しない場合
-   * @throws ForbiddenError userIdが所有者でない場合
-   */
-  updateHealthData(
-    userId: number,
-    healthDataId: number,
-    input: UpdateHealthDataDto
-  ): Promise<Result<HealthData, HealthDataError>>;
-
-  /**
-   * 健康情報を削除する
-   * @precondition healthDataIdが存在し、userIdが所有者であること
-   * @postcondition HEALTH_DATAテーブルからレコードが削除されること
-   */
-  deleteHealthData(
-    userId: number,
-    healthDataId: number
-  ): Promise<Result<void, HealthDataError>>;
-
-  /**
-   * 健康情報を検索する
-   * @precondition start <= end であること
-   * @postcondition userIdが所有する健康情報のみが返却されること
-   */
-  findHealthData(
-    userId: number,
-    query: HealthDataQuery
-  ): Promise<Result<HealthData[], HealthDataError>>;
-}
-
-interface CreateHealthDataDto {
-  measurementDate: string; // ISO 8601 date
-  dataTypeId: number;
-  value: number;
-  memo?: string;
-}
-
-interface UpdateHealthDataDto {
-  value: number;
-  memo?: string;
-}
-
-interface HealthDataQuery {
-  startDate: string;
-  endDate: string;
-  dataTypeId?: number;
-}
-
-type HealthDataError = ValidationError | DuplicateError | NotFoundError | ForbiddenError;
+    note right of 無効
+        is_active = false
+        新規データ登録時に選択不可
+        既存データは参照可能
+        findAllDataTypes()で取得
+    end note
 ```
 
-**事前条件**: userIdが有効なユーザーIDであること、データ種類IDがマスタに存在すること
-**事後条件**: データベーストランザクションがコミットされること、監査ログが記録されること
-**不変条件**: ユーザーは自身の健康データのみアクセス可能であること
+**バリデーション**:
 
----
+- `deactivateDataType(id)`実行時:
+  - データ種類が存在することを確認
+  - 既に無効状態の場合はエラー(409 Conflict)を返す
+- `updateDataType(id, dto)`実行時:
+  - `is_active`フィールドは更新不可(状態遷移は専用メソッドで管理)
 
-#### AnalyticsService
+**テスト観点**:
 
-**責任と境界**
-- **主要責任**: 統計計算(最大・最小・平均)、30日移動平均計算、グラフ用データ整形
-- **ドメイン境界**: データ分析ドメイン
-- **データ所有権**: なし(読み取り専用)
-- **トランザクション境界**: なし(読み取り専用操作)
+- 有効なデータ種類を無効化できること
+- 無効化されたデータ種類に関連する既存データが削除されないこと
+- 無効化されたデータ種類が新規登録時の選択肢に表示されないこと
+- 無効化されたデータ種類を再度無効化しようとすると409エラーになること
 
-**依存関係**
-- **インバウンド**: Hono APIハンドラ
-- **アウトバウンド**: HealthDataRepository
-- **外部**: なし
+#### Models層
 
-**契約定義: サービスインターフェース**
+**責務**: データベースアクセス、SQLクエリ実行、ORMマッピング
 
-```typescript
-interface AnalyticsService {
-  /**
-   * 統計値を計算する
-   * @precondition start <= end であること
-   * @postcondition 最大・最小・平均値が返却されること(データが0件の場合はnull)
-   */
-  calculateStatistics(
-    userId: number,
-    query: AnalyticsQuery
-  ): Promise<Result<Statistics | null, AnalyticsError>>;
+**主要モデル**:
+- `UserModel`: USERテーブルへのアクセス
+- `HealthDataModel`: HEALTH_DATAテーブルへのアクセス
+- `DataTypeModel`: DATA_TYPE_MASTERテーブルへのアクセス
+- `DataExportModel`: DATA_EXPORTテーブルへのアクセス
 
-  /**
-   * グラフ用データを生成する(折れ線グラフ + 30日移動平均)
-   * @precondition start <= end であること
-   * @postcondition 時系列データと移動平均が返却されること
-   */
-  getChartData(
-    userId: number,
-    query: AnalyticsQuery
-  ): Promise<Result<ChartData, AnalyticsError>>;
-}
+### フロントエンド - Reactコンポーネント
 
-interface AnalyticsQuery {
-  startDate: string;
-  endDate: string;
-  dataTypeId: number;
-}
+#### ページコンポーネント
 
-interface ChartData {
-  dataPoints: DataPoint[];
-  movingAverage: DataPoint[];
-  statistics: Statistics;
-}
+- `LoginPage`: ログイン画面
+- `DashboardPage`: ダッシュボード(最近のデータ一覧)
+- `DataEntryPage`: データ登録フォーム
+- `DataListPage`: データ一覧・検索
+- `AnalyticsPage`: データ分析・グラフ表示
+- `ExportPage`: データ出力(PDF/CSV)
+- `SettingsPage`: 設定画面(データ種類マスタ管理)
 
-interface DataPoint {
-  date: string;
-  value: number;
-}
+#### UIコンポーネント
 
-interface Statistics {
-  max: number;
-  min: number;
-  average: number;
-  count: number;
-}
+- `HealthDataForm`: 健康データ入力フォーム
+- `DataTypeSelector`: データ種類選択ドロップダウン
+- `DatePicker`: 日付選択カレンダー
+- `StatisticsCard`: 統計値表示カード(最大・最小・平均)
+- `LineChart`: 折れ線グラフ(Chart.js/Recharts)
+- `DataTable`: データ一覧テーブル
 
-type AnalyticsError = ValidationError | NotFoundError;
-```
-
-**事前条件**: userIdが有効、データ種類IDが存在すること
-**事後条件**: 3秒以内にレスポンスが返却されること
-**不変条件**: 他ユーザーのデータは含まれないこと
-
----
-
-#### ExportService
-
-**責任と境界**
-- **主要責任**: PDF/CSV形式でのデータ出力、医療機関提出用フォーマット生成
-- **ドメイン境界**: データ出力ドメイン
-- **データ所有権**: DATA_EXPORTテーブルのデータ所有(出力履歴)
-- **トランザクション境界**: 各出力操作がトランザクション境界
-
-**依存関係**
-- **インバウンド**: Hono APIハンドラ
-- **アウトバウンド**: HealthDataRepository, DataExportRepository
-- **外部**: PDFKit(PDF生成), csv-stringify(CSV生成)
-
-**外部依存関係の調査**:
-- **PDFKit 0.14+**: PDF生成ライブラリ、Node.js/Deno対応、日本語フォント対応要確認(実装フェーズで調査必要)
-- **csv-stringify 6.4+**: CSV生成ライブラリ、ストリーミング対応、Deno互換性要確認
-
-**契約定義: サービスインターフェース**
-
-```typescript
-interface ExportService {
-  /**
-   * PDF形式でデータを出力する
-   * @precondition start <= end であること
-   * @postcondition PDFファイルが生成され、出力履歴が記録されること
-   * @performance 1年分のデータ(約1,800件)を10秒以内に生成すること
-   */
-  exportToPDF(
-    userId: number,
-    query: ExportQuery
-  ): Promise<Result<Buffer, ExportError>>;
-
-  /**
-   * CSV形式でデータを出力する
-   * @precondition start <= end であること
-   * @postcondition CSVファイルが生成され、出力履歴が記録されること
-   */
-  exportToCSV(
-    userId: number,
-    query: ExportQuery
-  ): Promise<Result<string, ExportError>>;
-}
-
-interface ExportQuery {
-  startDate: string;
-  endDate: string;
-  dataTypeIds: number[];
-}
-
-type ExportError = ValidationError | NotFoundError | ExportGenerationError;
-```
-
-**事前条件**: userIdが有効、期間が妥当であること
-**事後条件**: 10秒以内にファイルが生成されること、出力履歴がDATA_EXPORTテーブルに記録されること
-**不変条件**: 他ユーザーのデータは含まれないこと
-
----
-
-### バックエンド層 - インフラストラクチャ層
-
-#### HealthDataRepository
-
-**責任と境界**
-- **主要責任**: HEALTH_DATAテーブルへのCRUD操作、SQLクエリの実行
-- **ドメイン境界**: データアクセス層
-- **データ所有権**: HEALTH_DATAテーブルへのアクセス権
-- **トランザクション境界**: なし(サービス層がトランザクション管理)
-
-**依存関係**
-- **インバウンド**: HealthDataService, AnalyticsService, ExportService, ImportService
-- **アウトバウンド**: PostgreSQLデータベース
-- **外部**: postgres.js(PostgreSQLクライアントライブラリ)
-
-**外部依存関係の調査**:
-- **postgres.js 3.4+**: PostgreSQLクライアント、Deno対応、プリペアドステートメント対応、コネクションプーリング機能
-
-**契約定義: リポジトリインターフェース**
-
-```typescript
-interface HealthDataRepository {
-  save(data: HealthData): Promise<HealthData>;
-  update(id: number, data: Partial<HealthData>): Promise<HealthData>;
-  delete(id: number): Promise<void>;
-  findById(id: number): Promise<HealthData | null>;
-  findByUserId(userId: number, query: HealthDataQuery): Promise<HealthData[]>;
-  findByPeriod(userId: number, start: string, end: string, dataTypeId: number): Promise<HealthData[]>;
-  countByUserId(userId: number): Promise<number>;
-}
-
-interface HealthData {
-  id: number;
-  userId: number;
-  dataTypeId: number;
-  measurementDate: string;
-  value: number;
-  memo?: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-```
-
-**統合戦略**: 新規開発のため、既存システムとの統合なし
-
----
-
-### バックエンド層 - APIコントラクト
-
-#### REST API エンドポイント
-
-| Method | Endpoint | Request | Response | Errors |
-|--------|----------|---------|----------|--------|
-| POST | /api/auth/login | `Authorization: Basic base64(user:pass)` | `{userId, username}` | 401 |
-| GET | /api/health | なし | `{status: "ok"}` | 503 |
-| GET | /api/data-types | なし | `DataType[]` | 401, 500 |
-| POST | /api/data-types | `{name, unit, displayOrder}` | `DataType` | 400, 401, 409, 500 |
-| GET | /api/health-data | `?start&end&dataTypeId` | `HealthData[]` | 400, 401, 500 |
-| POST | /api/health-data | `{measurementDate, dataTypeId, value, memo?}` | `HealthData` | 400, 401, 409, 500 |
-| PUT | /api/health-data/:id | `{value, memo?}` | `HealthData` | 400, 401, 403, 404, 500 |
-| DELETE | /api/health-data/:id | なし | `204 No Content` | 401, 403, 404, 500 |
-| GET | /api/analytics/stats | `?start&end&dataTypeId` | `Statistics` | 400, 401, 500 |
-| GET | /api/analytics/chart | `?start&end&dataTypeId` | `ChartData` | 400, 401, 500 |
-| POST | /api/export/pdf | `{startDate, endDate, dataTypeIds[]}` | `application/pdf` | 400, 401, 500 |
-| POST | /api/export/csv | `{startDate, endDate, dataTypeIds[]}` | `text/csv` | 400, 401, 500 |
-| POST | /api/import/csv | `multipart/form-data: file` | `{imported: number, errors: Error[]}` | 400, 401, 500 |
-
-**リクエストスキーマ例**:
-
-```typescript
-// POST /api/health-data
-interface CreateHealthDataRequest {
-  measurementDate: string; // ISO 8601 date (YYYY-MM-DD)
-  dataTypeId: number;
-  value: number; // 小数点2桁まで
-  memo?: string; // 最大500文字
-}
-
-// バリデーションルール
-const createHealthDataSchema = z.object({
-  measurementDate: z.string().refine(isValidDate),
-  dataTypeId: z.number().int().positive(),
-  value: z.number().finite(),
-  memo: z.string().max(500).optional(),
-});
-```
-
-**レスポンススキーマ例**:
-
-```typescript
-// GET /api/analytics/chart
-interface ChartDataResponse {
-  dataPoints: Array<{
-    date: string; // ISO 8601
-    value: number;
-  }>;
-  movingAverage: Array<{
-    date: string;
-    value: number;
-  }>;
-  statistics: {
-    max: number;
-    min: number;
-    average: number;
-    count: number;
-  };
-}
-```
-
-**エラーレスポンス形式**:
-
-```typescript
-interface ErrorResponse {
-  error: {
-    code: string; // "VALIDATION_ERROR", "NOT_FOUND", etc.
-    message: string; // ユーザー向けエラーメッセージ
-    details?: Record<string, string[]>; // フィールドごとのバリデーションエラー
-  };
-}
-```
-
----
-
-## データモデル
-
-### ドメインモデル
-
-本システムは比較的シンプルなCRUDアプリケーションであり、複雑なビジネスルールや集約を持ちません。以下、主要な概念を定義します。
-
-**コア概念**:
-
-- **ユーザー(User)**: システム利用者、健康データの所有者
-- **データ種類(DataType)**: 血圧(上)、血圧(下)、脈拍、体重などの分類
-- **健康データ(HealthData)**: 測定日・データ種類・測定値の組み合わせ
-- **データ出力(DataExport)**: 出力履歴の記録
-
-**ビジネスルールと不変条件**:
-
-1. **一意性制約**: 同一ユーザー・同一測定日・同一データ種類の組み合わせは一意でなければならない
-2. **日付制約**: 測定日は過去日付または当日でなければならない(未来日付は不可)
-3. **データ所有権**: ユーザーは自身が登録した健康データのみアクセス可能
-4. **データ種類の削除制約**: 健康データが関連付けられているデータ種類は削除不可(論理削除のみ)
-5. **カスケード削除**: ユーザー削除時、関連する健康データと出力履歴も自動削除
-
-**集約と境界**:
-
-- **User集約**: Userエンティティが集約ルート、HealthDataとDataExportは別集約(パフォーマンス最適化のため)
-- **HealthData集約**: HealthDataエンティティが集約ルート、単一エンティティで構成
-
----
-
-### 物理データモデル(PostgreSQL)
+### データベーススキーマ
 
 #### USERテーブル
 
@@ -774,16 +965,7 @@ CREATE TABLE users (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE INDEX idx_users_username ON users(username);
 ```
-
-**データ型選択根拠**:
-- `BIGSERIAL`: 自動採番、最大9,223,372,036,854,775,807件のレコードをサポート
-- `VARCHAR(50)`: ユーザー名は最大50文字、ASCII英数字想定
-- `VARCHAR(255)`: bcryptハッシュは60文字だが、将来的なアルゴリズム変更に備えて255文字
-
----
 
 #### DATA_TYPE_MASTERテーブル
 
@@ -797,9 +979,6 @@ CREATE TABLE data_type_master (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE INDEX idx_data_type_master_is_active ON data_type_master(is_active);
-CREATE INDEX idx_data_type_master_display_order ON data_type_master(display_order);
 ```
 
 **初期データ**:
@@ -810,8 +989,6 @@ INSERT INTO data_type_master (data_type_name, unit, display_order) VALUES
   ('脈拍', 'bpm', 3),
   ('体重', 'kg', 4);
 ```
-
----
 
 #### HEALTH_DATAテーブル
 
@@ -828,23 +1005,9 @@ CREATE TABLE health_data (
   UNIQUE(user_id, data_type_id, measurement_date)
 );
 
--- パフォーマンス最適化インデックス
 CREATE INDEX idx_health_data_user_date ON health_data(user_id, measurement_date DESC);
 CREATE INDEX idx_health_data_user_type_date ON health_data(user_id, data_type_id, measurement_date DESC);
 ```
-
-**データ型選択根拠**:
-- `DATE`: 測定日は時刻情報不要、日単位の粒度
-- `DECIMAL(10, 2)`: 測定値は小数点2桁まで、最大8桁の整数部(例: 99999999.99)
-- `TEXT`: メモは可変長、最大1GBまで対応(PostgreSQL制約)
-
-**インデックス戦略**:
-- `(user_id, measurement_date DESC)`: 期間検索のクエリ最適化
-- `(user_id, data_type_id, measurement_date DESC)`: データ種類別の期間検索最適化
-
-**パーティション戦略**: 初期フェーズでは不要、ユーザー数1,000以上・年間200万件以上でパーティショニング検討
-
----
 
 #### DATA_EXPORTテーブル
 
@@ -863,315 +1026,180 @@ CREATE INDEX idx_data_export_user ON data_export(user_id, exported_at DESC);
 
 ---
 
-### データ契約とイベント
+## まとめ
 
-**APIデータ転送**:
-- シリアライゼーション形式: JSON
-- バリデーション: Zod スキーマによる実行時型検証
-- 日付形式: ISO 8601 (YYYY-MM-DD)
+本設計書は、個人ヘルスケアレコード管理システム(SPHR)の技術設計を定義しました。
 
-**スキーマバージョニング戦略**:
-- 初期フェーズではバージョニング不要
-- 将来的にAPI v2を追加する場合は `/api/v2/` プレフィックスを使用
+**主要な設計判断**:
+1. **レイヤードアーキテクチャ**: Routes → Controllers → Services → Modelsの4層構成により、責務分離とテスタビリティを実現
+2. **Basic認証**: HTTPS上のBasic認証により、シンプルで安全な認証を提供
+3. **同期的データ分析**: SQLの集計関数とウィンドウ関数により、リアルタイムな統計計算を実現
 
-**後方互換性**:
-- フィールド追加は後方互換、既存フィールドの削除は破壊的変更として新バージョンで対応
+**技術スタック**:
+- バックエンド: Deno 1.40+ + Hono 4.0+ + TypeScript
+- フロントエンド: React 18+ + TypeScript
+- データベース: PostgreSQL 15+
+- インフラ: Docker Compose + Azure VM
 
----
-
-## エラーハンドリング
-
-### エラー戦略
-
-本システムでは、エラーを**ユーザーエラー**、**システムエラー**、**ビジネスロジックエラー**の3つのカテゴリーに分類し、それぞれ適切な回復メカニズムを実装します。
-
-### エラーカテゴリーと対応
-
-#### ユーザーエラー(4xx)
-
-**400 Bad Request - 入力値の不正**:
-- **発生条件**: バリデーションエラー、不正な日付形式、数値範囲外
-- **対応**: フィールド別のエラーメッセージを返却、ユーザーに修正を促す
-- **例**: `{"error": {"code": "VALIDATION_ERROR", "details": {"measurementDate": ["未来の日付は指定できません"]}}}`
-
-**401 Unauthorized - 認証失敗**:
-- **発生条件**: Basic認証ヘッダーが不正、ユーザー名/パスワードが一致しない
-- **対応**: ブラウザの認証ダイアログを再表示、認証ガイダンスを提供
-- **例**: `{"error": {"code": "UNAUTHORIZED", "message": "ユーザー名またはパスワードが正しくありません"}}`
-
-**403 Forbidden - アクセス権限なし**:
-- **発生条件**: 他ユーザーのデータにアクセスしようとした
-- **対応**: アクセス不可の旨を通知、適切なナビゲーションを提供
-- **例**: `{"error": {"code": "FORBIDDEN", "message": "このデータにアクセスする権限がありません"}}`
-
-**404 Not Found - リソース未存在**:
-- **発生条件**: 指定されたIDのデータが存在しない
-- **対応**: データが見つからない旨を通知、一覧画面へのナビゲーションリンクを提供
-- **例**: `{"error": {"code": "NOT_FOUND", "message": "指定されたデータは見つかりませんでした"}}`
-
-**409 Conflict - データ競合**:
-- **発生条件**: 一意性制約違反(同一ユーザー・日付・データ種類の組み合わせが既に存在)
-- **対応**: 既存データの更新を提案、または削除後に再登録を促す
-- **例**: `{"error": {"code": "DUPLICATE_ERROR", "message": "この日付のデータは既に登録されています"}}`
-
-#### システムエラー(5xx)
-
-**500 Internal Server Error - サーバー内部エラー**:
-- **発生条件**: データベース接続失敗、予期しない例外
-- **対応**: グレースフルデグラデーション(一部機能の無効化)、エラーログに詳細記録、管理者にアラート通知
-- **回復**: 自動リトライ(最大3回)、サーキットブレーカーパターン適用(5分間エラー率50%超で一時停止)
-
-**503 Service Unavailable - サービス利用不可**:
-- **発生条件**: メンテナンス中、データベース過負荷
-- **対応**: メンテナンス終了予定時刻を通知、リトライ推奨時間を提示
-- **回復**: ヘルスチェックエンドポイント(`/api/health`)で自動復旧検知
-
-**504 Gateway Timeout - タイムアウト**:
-- **発生条件**: 長時間処理(大量データの出力等)がタイムアウト
-- **対応**: 処理時間の目安を事前表示、タイムアウト時は再試行を促す
-- **回復**: 非同期処理への切り替え検討(実装フェーズで要調査)
-
-#### ビジネスロジックエラー(422)
-
-**422 Unprocessable Entity - ビジネスルール違反**:
-- **発生条件**: データ種類が無効、削除不可なデータ種類の削除試行
-- **対応**: ビジネスルール違反の理由を明確に説明、条件を満たす方法をガイド
-- **例**: `{"error": {"code": "BUSINESS_RULE_ERROR", "message": "このデータ種類は使用中のため削除できません"}}`
-
-### 監視とロギング
-
-**エラートラッキング**:
-- すべての5xxエラーをログファイルに記録(`/var/log/sphr/error.log`)
-- エラー発生時のスタックトレース、リクエスト情報、ユーザーIDを記録
-- 重大なエラー(データベース接続失敗等)は即座にメール通知
-
-**ログレベル**:
-- **ERROR**: 5xxエラー、予期しない例外
-- **WARN**: 4xxエラー、ビジネスロジックエラー
-- **INFO**: APIリクエスト/レスポンス、認証成功/失敗
-- **DEBUG**: SQLクエリ、外部API呼び出し(開発環境のみ)
-
-**ヘルスモニタリング**:
-- `/api/health`エンドポイントでデータベース接続、ディスク容量、メモリ使用率をチェック
-- 1分間隔でPrometheusが収集、アラート条件(稼働率99.5%未満、レスポンスタイム3秒超)に達したらメール通知
+**非機能要件の達成**:
+- 性能: レスポンス時間1〜10秒以内
 
 ---
 
-## テスト戦略
+## 実装ロードマップ
 
-### ユニットテスト
+本システムは、RDDD0103の業務目標達成戦略に基づき、段階的開発アプローチを採用します。各フェーズで明確な業務目標とKPIを設定し、ユーザー価値を段階的に提供します。
 
-**対象コンポーネント**: サービス層、ドメイン層、ユーティリティ関数
+### Phase 1: MVPリリース (0-3ヶ月) ← 本設計書の対象範囲
 
-**主要テストケース**:
-1. **HealthDataService.createHealthData**: 正常系(データ登録成功)、異常系(重複データ、不正な日付、存在しないデータ種類ID)
-2. **AnalyticsService.calculateStatistics**: 正常系(統計計算)、境界値(データ0件、1件、1000件以上)
-3. **AnalyticsService.calculate30DayMovingAverage**: 移動平均アルゴリズムの正確性、境界値(データ30件未満)
-4. **AuthService.verifyPassword**: bcryptハッシュ検証、不正なパスワード
-5. **InputValidator.validateDate**: 日付形式、過去日付、未来日付、不正な文字列
+**業務目標**:
+- **G-02**: データ登録の利便性向上 (平均データ登録時間 30秒以内)
+- **G-03**: データ分析機能の充実 (分析機能利用率 月1回以上70%以上)
 
-**テストフレームワーク**: Deno標準テストランナー(`deno test`)
+**実装機能** (全16業務プロセスをカバー):
 
-**モック戦略**: リポジトリ層をモック化、データベースアクセスなし
+| カテゴリ | 業務プロセス | 実装コンポーネント | 優先度 |
+|---------|-------------|-------------------|-------|
+| CBP-01 | 健康情報のCRUD | HealthDataService, HealthDataModel | 最高 |
+| CBP-02 | データ分析・可視化 | AnalyticsService, Chart.js | 最高 |
+| CBP-03 | データ出力(PDF/CSV) | ExportService, DataExportModel | 高 |
+| CBP-04 | データ種類マスタ管理 | DataTypeService, DataTypeModel | 高 |
+| CBP-05 | ユーザー管理・認証 | UserService, AuthMiddleware | 最高 |
+| CBP-06 | 過去データインポート | ImportService | 中 |
 
----
+**非機能要件**: RDDD1201の全項目
+- 性能: レスポンス時間1〜10秒以内、同時接続100ユーザー
+- セキュリティ: Basic認証、TLS 1.2+、bcryptハッシュ化
+- 可用性: 稼働率99%、RTO 4時間、RPO 24時間
+- 拡張性: 垂直スケーリング対応(2-4 vCPU)
+- 保守性: TypeScript型安全性、レイヤードアーキテクチャ
+- ユーザビリティ: レスポンシブデザイン、明確なエラーメッセージ
 
-### 統合テスト
-
-**対象フロー**: コンポーネント間の連携、APIエンドポイントのE2Eテスト
-
-**主要テストケース**:
-1. **健康情報登録フロー**: POST /api/health-data → データベース保存 → GET /api/health-data で確認
-2. **データ分析フロー**: 複数データ登録 → GET /api/analytics/stats → 統計値検証
-3. **認証フロー**: POST /api/auth/login(認証成功) → GET /api/health-data(認証済み) → GET /api/health-data(認証なし、401エラー)
-4. **CSV出力フロー**: データ登録 → POST /api/export/csv → CSVフォーマット検証
-5. **データ移行フロー**: CSV アップロード → POST /api/import/csv → データベース確認
-
-**テスト環境**: Docker Composeでテスト用PostgreSQLコンテナを起動
-
-**データ準備**: テストごとにデータベースをリセット、フィクスチャデータをシード
-
----
-
-### E2E/UIテスト
-
-**対象**: ブラウザを通じたユーザーシナリオのテスト
-
-**主要テストケース**:
-1. **ログインから健康情報登録まで**: Basic認証 → ダッシュボード表示 → データ登録フォーム入力 → 成功通知
-2. **データ参照とページネーション**: 100件以上のデータ登録 → 一覧表示 → ページ遷移
-3. **グラフ描画**: データ登録 → 分析画面 → 折れ線グラフ表示 → 30日移動平均表示
-4. **レスポンシブデザイン**: スマートフォン画面サイズでの操作性(モバイルエミュレーション)
-5. **エラーハンドリング**: 不正な日付入力 → バリデーションエラー表示 → フィールドフォーカス
-
-**テストフレームワーク**: Playwright(ブラウザ自動化)
+**達成基準**:
+- サービス開始時点でG-02を達成 (データ登録時間30秒以内)
+- サービス開始後3ヶ月でG-03を達成 (分析機能利用率70%以上)
 
 ---
 
-### パフォーマンス/負荷テスト
+### Phase 2: 改善・拡張フェーズ (3-6ヶ月)
 
-**対象**: システムのパフォーマンス要件達成確認
+**業務目標**:
+- **G-01**: ユーザーの継続利用促進 (月次アクティブユーザー率 80%以上)
 
-**主要テストケース**:
-1. **データ登録レスポンスタイム**: 1秒以内(要件1.3)、同時20ユーザー
-2. **データ参照レスポンスタイム**: 2秒以内(要件2.3)、100件以上のデータ
-3. **グラフ描画レスポンスタイム**: 3秒以内(要件4.4)、1年分(365件)のデータ
-4. **CSV出力処理時間**: 10秒以内(要件5.4)、1年分(1,800件)のデータ
+**実装機能**:
 
-**テストツール**: Apache JMeter または k6(負荷試験ツール)
+1. **ユーザーフィードバック収集機能**
+   - アプリ内フィードバックフォーム
+   - 利用状況分析ダッシュボード(管理者向け)
+   - NPS(Net Promoter Score)調査機能
 
-**負荷テスト条件**: 同時20ユーザー、1時間継続アクセス、エラー率1%未満
+2. **継続利用を促進する機能**
+   - リマインダー・通知機能(Webプッシュ通知)
+   - データ登録ストリーク表示(連続登録日数)
+   - 登録状況カレンダービュー
 
----
+3. **データ入力UI/UXの改善**
+   - クイック入力モード(前回値の自動表示)
+   - 音声入力対応(Web Speech API)
+   - データ入力テンプレート機能
 
-## セキュリティ考慮事項
+4. **高度な分析機能**
+   - 傾向予測(線形回帰による将来予測)
+   - 異常値検出(標準偏差ベース)
+   - データ種類間の相関分析(血圧と体重など)
+   - 週次・月次レポート自動生成
 
-本システムは個人の健康情報(要保護個人情報)を扱うため、厳格なセキュリティ対策を実装します。
+**技術的拡張**:
+- Webプッシュ通知用のService Worker実装
+- Web Speech API統合
+- 機械学習モデル(TensorFlow.js)による予測機能
 
-### 脅威モデリング
-
-**主要な脅威**:
-1. **なりすまし**: 不正なユーザーが他ユーザーとしてログイン
-2. **データ漏洩**: ネットワーク傍受、データベース不正アクセス
-3. **データ改ざん**: SQLインジェクション、XSS攻撃
-4. **サービス妨害(DoS)**: 大量リクエストによるシステムダウン
-
-### セキュリティ制御
-
-#### 認証と認可
-
-**HTTP Basic認証(HTTPS強制)**:
-- すべてのHTTP通信をHTTPSで暗号化(TLS 1.2以上)
-- パスワードはbcryptでハッシュ化(ソルト10ラウンド)、平文保存なし
-- 認証失敗時のレート制限(5分間に5回失敗でアカウント一時ロック)
-
-**アクセス制御**:
-- ユーザーは自身のデータのみアクセス可能(ミドルウェアで強制)
-- すべてのAPIリクエストでuserIdを検証、他ユーザーのデータアクセスは403エラー
-
-#### データ保護
-
-**通信暗号化**:
-- TLS 1.2以上、強力な暗号スイート(AES-256-GCM等)
-- HTTP Strict Transport Security (HSTS)ヘッダー設定
-
-**データベース暗号化**:
-- PostgreSQL Transparent Data Encryption(TDE)による保存データ暗号化
-- バックアップファイルの暗号化(AES-256)
-
-**ログマスキング**:
-- アクセスログにパスワード、認証トークンを記録しない
-- エラーログに個人情報(ユーザー名、健康データ)を含めない
-
-#### 攻撃対策
-
-**SQLインジェクション対策**:
-- プリペアドステートメント(パラメータ化クエリ)の使用、動的SQL禁止
-- ORMの使用検討(実装フェーズで判断)
-
-**XSS(クロスサイトスクリプティング)対策**:
-- React のデフォルトエスケープ機能に依存
-- `dangerouslySetInnerHTML`の使用禁止
-- Content Security Policy(CSP)ヘッダー設定
-
-**CSRF(クロスサイトリクエストフォージェリ)対策**:
-- SameSite Cookie属性設定(`SameSite=Strict`)
-- CSRFトークンの生成と検証(Honoミドルウェアまたはカスタム実装)
-
-**DoS/DDoS対策**:
-- レート制限(1分間に60リクエスト/ユーザー)
-- ファイルアップロードサイズ制限(10MB)
-- タイムアウト設定(APIリクエスト30秒、データベースクエリ10秒)
-
-### コンプライアンス
-
-**個人情報保護法対応**:
-- ユーザーの同意に基づくデータ収集
-- データ削除リクエストへの対応(ユーザー削除機能)
-- データの第三者提供なし(医療機関へはユーザー自身がエクスポート)
+**達成基準**:
+- サービス開始後6ヶ月でG-01を達成 (月次アクティブユーザー率80%以上)
 
 ---
 
-## パフォーマンスとスケーラビリティ
+### Phase 3: 連携拡張フェーズ (6-12ヶ月)
 
-### 目標メトリクス
+**業務目標**:
+- **G-04**: 医師との情報共有の実現 (データ出力機能利用率 年1回以上50%以上)
 
-| 指標 | 目標値 | 測定方法 |
-|------|--------|----------|
-| データ登録レスポンスタイム | 1秒以内 | APMツール、アクセスログ分析 |
-| データ参照レスポンスタイム | 2秒以内 | APMツール、アクセスログ分析 |
-| グラフ描画レスポンスタイム | 3秒以内 | APMツール、ブラウザDevTools |
-| データ出力処理時間(1年分) | 10秒以内 | APMツール、タイマーログ |
-| システム稼働率 | 99.5%以上 | Prometheusメトリクス、Uptime監視 |
-| 同時接続ユーザー数 | 20ユーザー | 負荷テスト(JMeter/k6) |
+**実装機能**:
 
-### スケーリング戦略
+1. **医療機関向けデータ共有API**
+   - OAuth 2.0による認可フロー
+   - FHIR(Fast Healthcare Interoperability Resources)形式対応
+   - 医療機関専用ポータル画面
 
-**垂直スケーリング(基本戦略)**:
-- 初期: Azure VM B2s (2vCPU, 4GB RAM, 100GB SSD) - 月額約$40
-- 500ユーザー到達時: B2ms (2vCPU, 8GB RAM, 200GB SSD) - 月額約$80
-- 1,000ユーザー到達時: B4ms (4vCPU, 16GB RAM, 500GB SSD) - 月額約$160
+2. **アクセス権限管理の拡張**
+   - ロールベースアクセス制御(RBAC)
+   - データ共有の細かい権限設定(期間、データ種類単位)
+   - 共有履歴の閲覧・取り消し機能
 
-**水平スケーリング(将来検討)**:
-- 1,000ユーザー超過時に検討
-- Azure Load Balancer + 複数VMインスタンス
-- PostgreSQL Read Replica(読み取り専用レプリカ)
+3. **外部デバイス連携**
+   - Fitbit API連携
+   - Apple Health連携(HealthKit)
+   - Google Fit連携
+   - Bluetooth血圧計連携(Web Bluetooth API)
 
-### キャッシング戦略
+4. **高度なレポート機能**
+   - 医師向け診療レポート(検査値推移、服薬管理含む)
+   - 多言語対応(英語レポート)
+   - 複数期間比較レポート
 
-**データ種類マスタのキャッシング**:
-- アプリケーション起動時にメモリキャッシュ
-- 更新頻度が低い(月1回程度)ため、TTL 1時間
+**技術的拡張**:
+- OAuth 2.0 Authorization Server実装
+- FHIR R4仕様への準拠
+- Web Bluetooth API統合
+- 外部APIクライアント(Fitbit、Apple Health、Google Fit)
 
-**統計値のキャッシング**:
-- 初期フェーズでは不要(計算コストが低い)
-- 1,000ユーザー以上でRedisキャッシュ検討
-
-### データベース最適化
-
-**インデックス戦略**:
-- `(user_id, measurement_date DESC)`: 期間検索の高速化
-- `(user_id, data_type_id, measurement_date DESC)`: データ種類別検索の高速化
-
-**クエリ最適化**:
-- EXPLAIN ANALYZEによるクエリプラン分析
-- N+1問題の回避(JOINまたはIN句による一括取得)
-
-**コネクションプーリング**:
-- 最小接続数: 5
-- 最大接続数: 20
-- アイドルタイムアウト: 30秒
+**達成基準**:
+- サービス開始後1年でG-04を達成 (データ出力機能利用率50%以上)
 
 ---
 
-## 付録
+## ロードマップと現仕様の関係
 
-### 用語集
+本設計書は**Phase 1: MVPリリース**の実装範囲を完全にカバーしています:
 
-| 用語 | 定義 |
-|------|------|
-| PHR (Personal Healthcare Record) | 個人健康記録、個人が自身の健康情報を管理する記録 |
-| Basic認証 | HTTP認証方式の一つ、ユーザー名とパスワードをBase64エンコードして送信 |
-| bcrypt | パスワードハッシュ化アルゴリズム、ソルトとコストパラメータによる強度調整 |
-| 30日移動平均 | 過去30日間のデータの平均値、トレンド分析に使用 |
-| EARS | Easy Approach to Requirements Syntax、要件記述形式 |
-| RTO (Recovery Time Objective) | 目標復旧時間、障害から復旧するまでの目標時間 |
-| RPO (Recovery Point Objective) | 目標復旧時点、データ損失を許容できる時間範囲 |
-| CRUD | Create(作成)、Read(読み取り)、Update(更新)、Delete(削除)の頭字語 |
+| 設計セクション | Phase 1対応範囲 | Phase 2以降への拡張性 |
+|--------------|----------------|---------------------|
+| システムフロー(16個) | CBP-01〜06の全業務プロセス | Phase 2で通知フロー、Phase 3で外部連携フロー追加 |
+| 要件トレーサビリティ | 全22アクティビティ + 6非機能要件 | Phase 2/3の新機能を追加マッピング |
+| コンポーネント設計 | レイヤードアーキテクチャ基盤 | Phase 2で新Serviceクラス、Phase 3でAPI Gateway追加 |
+| データベーススキーマ | 4テーブル(USER, DATA_TYPE_MASTER, HEALTH_DATA, DATA_EXPORT) | Phase 2でNOTIFICATIONテーブル、Phase 3でSHARE_PERMISSIONテーブル追加 |
+| 認証・認可 | Basic認証 | Phase 3でOAuth 2.0へ拡張 |
 
-### 参考ドキュメント
+**設計判断の根拠**:
 
-- **要件定義書**: `.kiro/specs/personal-healthcare-record/requirements.md`
-- **概念データモデル**: `docs/requirements/RDDD0401_conceptual_data_model.md`
-- **業務プロセス**: `docs/requirements/RDDD0502_business_process.md`
-- **非機能要件**: `docs/requirements/RDDD1201_nonfunctional_requirements.md`
-- **ビジネスコンセプト**: `docs/requirements/RDDD0101_business_concept.md`
+1. **Phase 1にフル機能を実装する理由**:
+   - MVP段階でG-02とG-03を達成するには、全16業務プロセスが必須
+   - 部分的実装ではユーザー価値が不十分で継続利用に繋がらない
+   - 早期フィードバック収集のため、完全動作するシステムが必要
 
-### 技術ドキュメントリンク
+2. **Phase 2以降への拡張性確保**:
+   - レイヤードアーキテクチャにより、新機能追加が容易
+   - Basic認証からOAuth 2.0への移行パスを考慮
+   - データベーススキーマは正規化済みで拡張可能
 
-- **Deno公式**: https://deno.land/
-- **Hono公式**: https://hono.dev/
-- **React公式**: https://react.dev/
-- **PostgreSQL公式**: https://www.postgresql.org/
-- **Recharts(グラフライブラリ)**: https://recharts.org/
-- **Docker Compose**: https://docs.docker.com/compose/
+3. **段階的リリースの利点**:
+   - Phase 1でコア機能を検証し、ユーザーフィードバックを収集
+   - Phase 2でフィードバックに基づく改善を実施
+   - Phase 3で医療機関連携という高度な機能を安定基盤上に構築
+
+---
+
+## まとめ
+
+本実装ロードマップは、**ユーザー価値の段階的提供**と**技術的負債の最小化**を両立させる戦略です。
+
+- **Phase 1 (0-3ヶ月)**: データ登録と分析のコア機能を完全実装 → 本設計書の対象範囲
+- **Phase 2 (3-6ヶ月)**: 継続利用を促進する改善と高度分析機能
+- **Phase 3 (6-12ヶ月)**: 医療機関連携と外部デバイス統合
+
+各フェーズは明確なKPIで測定可能であり、ユーザーからのフィードバックを次フェーズに反映する継続的改善サイクルを実現します。
+- セキュリティ: TLS、Basic認証、bcryptハッシュ化、各種攻撃対策
+- 可用性: 稼働率99.5%、RTO 4時間、RPO 24時間
+- 拡張性: 100〜1,000ユーザーへの段階的スケーリング
+
+次のフェーズでは、本設計書に基づいて実装タスクを作成します。
