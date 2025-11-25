@@ -1,0 +1,41 @@
+{
+  "tasks": {
+    "dev": "deno run --allow-net --allow-read --allow-env --allow-write --watch src/backend/main.ts",
+    "start": "deno run --allow-net --allow-read --allow-env src/backend/main.ts",
+    "migrate": "deno run --allow-net --allow-read --allow-env --allow-write src/backend/models/migrate.ts",
+    "db:generate": "drizzle-kit generate:pg",
+    "db:push": "drizzle-kit push:pg",
+    "test": "deno test --allow-net --allow-read --allow-env --allow-write",
+    "fmt": "deno fmt",
+    "lint": "deno lint"
+  },
+  "imports": {
+    "@/": "./src/",
+    "@backend/": "./src/backend/",
+    "@frontend/": "./src/frontend/",
+    "@shared/": "./src/shared/",
+    "hono": "jsr:@hono/hono@^4.6",
+    "hono/": "jsr:@hono/hono@^4.6/",
+    "postgres": "https://deno.land/x/postgres@v0.17.0/mod.ts",
+    "bcrypt": "https://deno.land/x/bcrypt@v0.4.1/mod.ts",
+    "std/": "https://deno.land/std@0.208.0/"
+  },
+  "compilerOptions": {
+    "strict": true,
+    "jsx": "react-jsx",
+    "lib": ["deno.window", "dom", "dom.iterable"]
+  },
+  "fmt": {
+    "useTabs": false,
+    "lineWidth": 100,
+    "indentWidth": 2,
+    "semiColons": true,
+    "singleQuote": false,
+    "proseWrap": "preserve"
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  }
+}
