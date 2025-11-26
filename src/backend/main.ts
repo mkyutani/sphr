@@ -8,6 +8,11 @@ import { cors } from "jsr:@hono/hono@^4.6/cors";
 import { errorHandler, notFoundHandler } from "@backend/middlewares/errorHandler.ts";
 import { requestLogger } from "@backend/middlewares/requestLogger.ts";
 import { auth } from "@backend/routes/auth.ts";
+import { dataType } from "@backend/routes/dataType.ts";
+import { healthData } from "@backend/routes/healthData.ts";
+import { analysis } from "@backend/routes/analysis.ts";
+import { exportRoute } from "@backend/routes/export.ts";
+import { importRoute } from "@backend/routes/import.ts";
 import { testConnection } from "@backend/models/db.ts";
 import { createLogger } from "@backend/utils/logger.ts";
 
@@ -37,6 +42,11 @@ app.get("/health", (c) => {
 
 // API routes
 app.route("/api/auth", auth);
+app.route("/api/data-types", dataType);
+app.route("/api/health-data", healthData);
+app.route("/api/analysis", analysis);
+app.route("/api/export", exportRoute);
+app.route("/api/import", importRoute);
 
 // 404 handler
 app.notFound(notFoundHandler);

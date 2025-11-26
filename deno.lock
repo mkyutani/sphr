@@ -1,12 +1,28 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@hono/hono@^4.6.0": "4.10.6"
+    "jsr:@hono/hono@^4.6.0": "4.10.6",
+    "npm:@types/node@*": "24.2.0"
   },
   "jsr": {
     "@hono/hono@4.10.6": {
       "integrity": "bcbbf9753a3570f2fa4609484bae0cead85a3feb110ee9ceb7ffc37d845d9a4d"
     }
+  },
+  "npm": {
+    "@types/node@24.2.0": {
+      "integrity": "sha512-3xyG3pMCq3oYCNg7/ZP+E1ooTaGB4cG8JWRsqqOYQdbWNY4zbaV0Ennrd7stjiJEFZCaybcIgpTjJWHRfBSIDw==",
+      "dependencies": [
+        "undici-types"
+      ]
+    },
+    "undici-types@7.10.0": {
+      "integrity": "sha512-t5Fy/nfn+14LuOc2KNYg75vZqClpAiqscVvMygNnlsHBFpSXdJaYtXMcdNLpl/Qvc3P2cB3s6lOV51nqsFq4ag=="
+    }
+  },
+  "redirects": {
+    "https://esm.sh/@types/bun@~1.2.23/index.d.ts": "https://esm.sh/@types/bun@1.2.23/index.d.ts",
+    "https://esm.sh/@types/bun@~1.2.5/index.d.ts": "https://esm.sh/@types/bun@1.2.23/index.d.ts"
   },
   "remote": {
     "https://deno.land/std@0.160.0/_util/assert.ts": "e94f2eb37cebd7f199952e242c77654e43333c1ac4c5c700e929ea3aa5489f74",
@@ -200,7 +216,11 @@
     "https://esm.sh/drizzle-orm@0.29.0/postgres-js": "f0c37748f43206862446cdf14d66cdc0bde38917c4ad585027e60c02a084eecf",
     "https://esm.sh/drizzle-orm@0.29.0/postgres-js/migrator": "19ac87dfa15828a179aa6b989704e315e5f4ce06073eae1cbfc4a3276351fc6a",
     "https://esm.sh/postgres@3.4.3": "2d1cf68faa4a5da37630d8b38102fa8fd291b01092b06eb3235b1ce22c572649",
-    "https://esm.sh/postgres@3.4.3/denonext/postgres.mjs": "328e5a8975b0b56811b3e1e13bd233b7e5de35a10e7a17c86260e3bcc50da254"
+    "https://esm.sh/postgres@3.4.3/denonext/postgres.mjs": "328e5a8975b0b56811b3e1e13bd233b7e5de35a10e7a17c86260e3bcc50da254",
+    "https://esm.sh/undici-types@7.16.0/handlers": "fabf6997a3adf11e45d11e3c4d58d0634ab98f9d72f3116f3694123818ccd457",
+    "https://esm.sh/undici-types@7.16.0/retry-handler": "fabf6997a3adf11e45d11e3c4d58d0634ab98f9d72f3116f3694123818ccd457",
+    "https://esm.sh/undici-types@7.4.0/handlers": "fabf6997a3adf11e45d11e3c4d58d0634ab98f9d72f3116f3694123818ccd457",
+    "https://esm.sh/undici-types@7.4.0/retry-handler": "fabf6997a3adf11e45d11e3c4d58d0634ab98f9d72f3116f3694123818ccd457"
   },
   "workspace": {
     "dependencies": [

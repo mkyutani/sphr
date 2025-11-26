@@ -5,6 +5,7 @@
 
 import { migrate } from "https://esm.sh/drizzle-orm@0.29.0/postgres-js/migrator";
 import { db, sql } from "./db.ts";
+import { seedAll } from "./seed.ts";
 
 /**
  * Run database migrations
@@ -15,6 +16,11 @@ async function runMigrations() {
   try {
     await migrate(db, { migrationsFolder: "./drizzle" });
     console.log("✓ Migrations completed successfully");
+
+    // Run seeds after migrations
+    console.log("\nSeeding default data...");
+    await seedAll(db);
+    console.log("✓ Seeding completed successfully");
   } catch (error) {
     console.error("✗ Migration failed:", error);
     throw error;
