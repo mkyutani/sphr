@@ -109,6 +109,26 @@ export const dataExport = pgTable(
 );
 
 /**
+ * Export Logs table - エクスポートログを記録
+ */
+export const exportLogs = pgTable(
+  "export_logs",
+  {
+    exportLogId: bigserial("export_log_id", { mode: "bigint" }).primaryKey(),
+    userId: bigserial("user_id", { mode: "bigint" }).notNull().references(() => users.userId, {
+      onDelete: "cascade",
+    }),
+    format: varchar("format", { length: 10 }).notNull(),
+    startDate: date("start_date").notNull(),
+    endDate: date("end_date").notNull(),
+    exportedAt: timestamp("exported_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    userExportedAtIdx: index("idx_export_logs_user_exported_at").on(table.userId, table.exportedAt),
+  }),
+);
+
+/**
  * Access Log table - 操作ログを記録
  */
 export const accessLog = pgTable(
@@ -145,6 +165,9 @@ export type NewHealthData = typeof healthData.$inferInsert;
 
 export type DataExport = typeof dataExport.$inferSelect;
 export type NewDataExport = typeof dataExport.$inferInsert;
+
+export type ExportLog = typeof exportLogs.$inferSelect;
+export type NewExportLog = typeof exportLogs.$inferInsert;
 
 export type AccessLog = typeof accessLog.$inferSelect;
 export type NewAccessLog = typeof accessLog.$inferInsert;

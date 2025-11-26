@@ -7,6 +7,8 @@ import { Hono } from "hono";
 import { cors } from "jsr:@hono/hono@^4.6/cors";
 import { errorHandler, notFoundHandler } from "@backend/middlewares/errorHandler.ts";
 import { requestLogger } from "@backend/middlewares/requestLogger.ts";
+import { securityHeaders } from "@backend/middlewares/securityHeaders.ts";
+import { rateLimit, RateLimitPresets } from "@backend/middlewares/rateLimit.ts";
 import { auth } from "@backend/routes/auth.ts";
 import { dataType } from "@backend/routes/dataType.ts";
 import { healthData } from "@backend/routes/healthData.ts";
@@ -24,6 +26,7 @@ const app = new Hono();
 // Global middleware
 app.use("*", errorHandler);
 app.use("*", requestLogger);
+app.use("*", securityHeaders());
 app.use(
   "*",
   cors({
@@ -31,6 +34,12 @@ app.use(
     credentials: true,
   }),
 );
+
+// Apply rate limiting to all routes
+app.use("*", rateLimit(RateLimitPresets.moderate));
+
+// Stricter rate limiting for auth endpoints
+app.use("/api/auth/*", rateLimit(RateLimitPresets.strict));
 
 // Health check endpoint
 app.get("/health", (c) => {
