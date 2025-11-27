@@ -1,0 +1,40 @@
+/**
+ * Frontend Entry Point
+ */
+
+import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App";
+
+// Basic CSS reset
+const style = document.createElement("style");
+style.textContent = `
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  button {
+    font-family: inherit;
+  }
+
+  input, select, textarea {
+    font-family: inherit;
+  }
+`;
+document.head.appendChild(style);
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);
