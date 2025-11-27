@@ -41,12 +41,46 @@ app.use("*", rateLimit(RateLimitPresets.moderate));
 // Stricter rate limiting for auth endpoints
 app.use("/api/auth/*", rateLimit(RateLimitPresets.strict));
 
-// Health check endpoint
-app.get("/health", (c) => {
-  return c.json({
-    status: "ok",
-    timestamp: new Date().toISOString(),
-  });
+// Health check endpoint with database check
+app.get("/health", async (c) => {
+  try {
+    // Test database connection
+    const dbHealthy = await testConnection();
+
+    if (!dbHealthy) {
+      return c.json(
+        {
+          status: "unhealthy",
+          timestamp: new Date().toISOString(),
+          checks: {
+            database: "failed",
+          },
+        },
+        503,
+      );
+    }
+
+    return c.json({
+      status: "healthy",
+      timestamp: new Date().toISOString(),
+      checks: {
+        database: "ok",
+        application: "ok",
+      },
+      version: "1.0.0",
+      uptime: process.uptime ? process.uptime() : null,
+    });
+  } catch (error) {
+    logger.error("Health check failed", error);
+    return c.json(
+      {
+        status: "unhealthy",
+        timestamp: new Date().toISOString(),
+        error: error instanceof Error ? error.message : "Unknown error",
+      },
+      503,
+    );
+  }
 });
 
 // API routes

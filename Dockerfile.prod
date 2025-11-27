@@ -1,0 +1,28 @@
+FROM denoland/deno:alpine-1.40.2
+
+# Install curl for healthcheck
+RUN apk add --no-cache curl
+
+WORKDIR /app
+
+# Copy dependency files
+COPY deno.json deno.lock ./
+
+# Cache dependencies
+RUN deno cache --lock=deno.lock src/backend/main.ts || true
+
+# Copy application code
+COPY . .
+
+# Cache dependencies again with full source
+RUN deno cache --lock=deno.lock src/backend/main.ts
+
+# Set production environment
+ENV NODE_ENV=production
+ENV PORT=8000
+
+# Expose port
+EXPOSE 8000
+
+# Run application
+CMD ["deno", "task", "start"]
